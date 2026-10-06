@@ -11,6 +11,9 @@ dependencies = [
     "pyspark (>=4.2.0,<5.0.0)"
 ]
 
+[project.scripts]
+lh-convert = "lakehouse.ingest.convert:main"
+
 [dependency-groups]
 dev = [
     "pytest (>=9.1.1,<10.0.0)",
