@@ -1,5 +1,6 @@
 """Convierte un Parquet a Parquet o a CSV."""
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -45,6 +46,7 @@ def _validate(
         FileNotFoundError: Si el archivo de origen no existe.
         FileExistsError: Si el destino ya existe y no se permite
             sobrescribir.
+        ValueError: Si el destino coincide con el origen o lo contiene.
         ValueError: Si alguna columna de partición no existe en el esquema
             del origen.
     """
@@ -72,6 +74,11 @@ def _validate(
 
     if target.exists() and not overwrite:
         raise FileExistsError(f'{target} ya existe (use --sobrescribir)')
+
+    if target.resolve() in (origin.resolve(), *origin.resolve().parents):
+        raise ValueError(
+            f'El destino {target} contiene o coincide con el origen {origin}'
+        )
 
     if partition:
         missing = [
@@ -110,8 +117,8 @@ def convert(
             Por defecto to `None`.
         partition (opcional): Columnas por las que se particiona la salida.
             Por defecto to `None`.
-        overwrite (bool, optional): Si es `True`, permite escribir sobre un
-            destino existente.
+        overwrite (bool, optional): Si es `True`, elimina el destino
+            existente (archivo o directorio completo) antes de escribir.
             Por defecto to `False`.
     """
     # Verifica si se proporciona aguna comprensión
@@ -121,6 +128,14 @@ def convert(
     _validate(
         origin, target, format_, compression, partition, overwrite
     )
+
+    # Elimina el destino previo para no mezclar datos antiguos con los nuevos
+    if overwrite and target.exists():
+        if target.is_dir():
+            shutil.rmtree(target)
+
+        else:
+            target.unlink()
 
     # Particionado por lotes
     if partition:
