@@ -15,6 +15,7 @@ dependencies = [
 lh-convert = "lakehouse.ingest.convert:main"
 lh-merge = "lakehouse.ingest.merge:main"
 lh-partition-date = "lakehouse.ingest.partition_date:main"
+lh-bench-compression = "lakehouse.benchmarks.compression:main"
 
 [dependency-groups]
 dev = [
