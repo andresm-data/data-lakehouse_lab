@@ -12,6 +12,7 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
 - [Estructura](#estructura)
 - [Uso](#uso)
   - [Comandos de ingesta](#comandos-de-ingesta)
+  - [Benchmark de compresión](#benchmark-de-compresión)
 
 ## Descripción
 
@@ -122,3 +123,43 @@ poetry run lh-partition-date data/landing/yellow_tripdata_2025-0*.parquet data/r
 | `--desde` / `--hasta` | Rango de fechas en formato ISO 8601; `--desde` es inclusiva y `--hasta` exclusiva |
 
 Cada comando muestra todas sus opciones con `--help`.
+
+### Benchmark de compresión
+
+**`lh-bench-compression`**: convierte un archivo con cada códec usando `lh-convert` y mide el tiempo de escritura, el tamaño en disco y el tiempo de lectura. Muestra la tabla de resultados y la guarda en `docs/benchmarks/compresion_<formato>_<AAAAMMDD_HHMMSS>.md`.
+
+```bash
+poetry run lh-bench-compression data/landing/yellow_tripdata_2025-01.parquet -r 3
+poetry run lh-bench-compression data/landing/yellow_tripdata_2025-01.parquet -f csv
+poetry run lh-bench-compression data/landing/yellow_tripdata_2025-01.parquet -c none zstd brotli
+```
+
+| Opción | Descripción |
+|---|---|
+| `-f`, `--formato` | Formato de salida: `parquet` (por defecto) o `csv` |
+| `-c`, `--compresiones` | Códecs a comparar. Por defecto, Parquet: `zstd gzip lz4 snappy`; CSV: `zstd gzip lz4 bz2` |
+| `-r`, `--repeticiones` | Mediciones por códec; se reporta la mediana (por defecto: 1) |
+| `--dir-trabajo` | Directorio de los archivos convertidos (por defecto: `data/benchmarks`) |
+| `--dir-salida` | Directorio del reporte (por defecto: `docs/benchmarks`) |
+| `--conservar` | Conserva los archivos convertidos, que por defecto se eliminan tras medirlos |
+
+El tiempo de escritura incluye la lectura del origen; con un origen Parquet ese costo es bajo y parecido entre códecs. La lectura se hace justo después de escribir, así que el archivo suele estar en la caché del sistema operativo y lo que se mide es sobre todo la descompresión.
+
+#### Con el dataset completo
+
+El benchmark recibe un único archivo de origen, por lo que primero hay que unir el dataset particionado en un solo Parquet:
+
+```bash
+# 1. Particionar por fecha los archivos originales (si data/raw aún no existe)
+poetry run lh-partition-date data/landing/yellow_tripdata_2025-0*.parquet data/raw/yellow_tripdata.parquet \
+    --columna tpep_pickup_datetime --desde 2025-01-01 --hasta 2025-04-01
+
+# 2. Unir las particiones en un Parquet consolidado
+poetry run lh-merge data/raw/yellow_tripdata.parquet data/interim/yellow_tripdata.parquet
+
+# 3. Ejecutar el benchmark para Parquet y para CSV
+poetry run lh-bench-compression data/interim/yellow_tripdata.parquet -r 3
+poetry run lh-bench-compression data/interim/yellow_tripdata.parquet -f csv
+```
+
+Conviene usar un origen Parquet y no el CSV consolidado: con un CSV, el tiempo de escritura incluye leer y analizar todo el archivo, y ese costo, igual para todos los códecs, oculta las diferencias entre ellos. Con unos 11 M de filas, gzip y bz2 en CSV pueden tardar varios minutos cada uno.
