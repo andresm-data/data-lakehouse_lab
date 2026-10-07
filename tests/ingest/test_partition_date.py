@@ -1,4 +1,4 @@
-"""Pruebas unitarias del particionado por fecha de lakehouse.ingest.convert."""
+"""Pruebas unitarias de lakehouse.ingest.partition_date."""
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -9,13 +9,9 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import pytest
 
-from lakehouse.ingest import convert as mod
-from lakehouse.ingest.convert import (
-    _expand_origins,
-    _validate_by_date,
-    convert_by_date,
-    main,
-)
+from lakehouse.ingest import partition_date as mod
+from lakehouse.ingest.partition_date import _validate as _validate_by_date
+from lakehouse.ingest.partition_date import main, partition_date as convert_by_date
 
 COL = 'tpep_pickup_datetime'
 
@@ -79,27 +75,6 @@ def _partition_dirs(target: Path, depth: int) -> set[str]:
         p.relative_to(target).as_posix()
         for p in target.glob(pattern) if p.is_dir()
     }
-
-
-# =============================================================================
-# _expand_origins
-# =============================================================================
-class TestExpandOrigins:
-
-    def test_archivos_se_mantienen_en_orden(self, origins):
-        assert _expand_origins(origins[::-1]) == origins[::-1]
-
-    def test_directorio_se_expande_ordenado(self, origins, tmp_path):
-        (tmp_path / 'raw' / 'notas.txt').write_text('x')
-
-        assert _expand_origins([tmp_path / 'raw']) == origins
-
-    def test_directorio_sin_parquet(self, tmp_path):
-        vacio = tmp_path / 'vacio'
-        vacio.mkdir()
-
-        with pytest.raises(FileNotFoundError, match='No se encontraron'):
-            _expand_origins([vacio])
 
 
 # =============================================================================
@@ -346,9 +321,9 @@ class TestConvertByDate:
 
 
 # =============================================================================
-# main con --particion-fecha
+# main
 # =============================================================================
-class TestMainByDate:
+class TestMain:
 
     def _run(self, monkeypatch, *args: str) -> int:
         monkeypatch.setattr(sys, 'argv', ['lh-convert', *args])
@@ -359,7 +334,7 @@ class TestMainByDate:
 
         code = self._run(
             monkeypatch, *map(str, origins), str(target),
-            '--particion-fecha', COL,
+            '--columna', COL,
             '--desde', '2025-01-01', '--hasta', '2025-03-01'
         )
 
@@ -371,12 +346,12 @@ class TestMainByDate:
         self, monkeypatch, origins, tmp_path
     ):
         calls = []
-        monkeypatch.setattr(mod, 'convert_by_date', lambda *a: calls.append(a))
+        monkeypatch.setattr(mod, 'partition_date', lambda *a: calls.append(a))
         target = tmp_path / 'yellow'
 
         self._run(
             monkeypatch, *map(str, origins), str(target),
-            '-f', 'csv', '-c', 'none', '--particion-fecha', COL,
+            '-f', 'csv', '-c', 'none', '--columna', COL,
             '--granularidad', 'day', '--desde', '2025-01-01',
             '--hasta', '2025-02-01T12:00', '--sobrescribir'
         )
@@ -389,11 +364,11 @@ class TestMainByDate:
 
     def test_granularidad_por_defecto_es_mes(self, monkeypatch, origins, tmp_path):
         calls = []
-        monkeypatch.setattr(mod, 'convert_by_date', lambda *a: calls.append(a))
+        monkeypatch.setattr(mod, 'partition_date', lambda *a: calls.append(a))
 
         self._run(
             monkeypatch, str(origins[0]), str(tmp_path / 'out'),
-            '--particion-fecha', COL
+            '--columna', COL
         )
 
         assert calls[0][3] == 'month'
@@ -401,59 +376,54 @@ class TestMainByDate:
     def test_error_devuelve_uno(self, monkeypatch, capsys, origins, tmp_path):
         code = self._run(
             monkeypatch, *map(str, origins), str(tmp_path / 'out'),
-            '--particion-fecha', 'monto'
+            '--columna', 'monto'
         )
 
         assert code == 1
         assert 'se requiere fecha o timestamp' in capsys.readouterr().err
 
-    @pytest.mark.parametrize('extra', [
-        ['--desde', '2025-01-01'],
-        ['--hasta', '2025-01-01'],
-        ['--granularidad', 'day'],
-    ])
-    def test_opciones_de_fecha_requieren_particion_fecha(
-        self, monkeypatch, capsys, origins, tmp_path, extra
-    ):
+    def test_columna_es_obligatoria(self, monkeypatch, capsys, origins, tmp_path):
         with pytest.raises(SystemExit) as exc:
-            self._run(monkeypatch, str(origins[0]), str(tmp_path / 'out'), *extra)
+            self._run(monkeypatch, str(origins[0]), str(tmp_path / 'out'))
 
         assert exc.value.code == 2
-        assert 'requieren --particion-fecha' in capsys.readouterr().err
-
-    def test_varios_origenes_requieren_particion_fecha(
-        self, monkeypatch, capsys, origins, tmp_path
-    ):
-        with pytest.raises(SystemExit) as exc:
-            self._run(monkeypatch, *map(str, origins), str(tmp_path / 'out'))
-
-        assert exc.value.code == 2
-        assert 'requieren --particion-fecha' in capsys.readouterr().err
-
-    def test_directorio_requiere_particion_fecha(
-        self, monkeypatch, capsys, origins, tmp_path
-    ):
-        with pytest.raises(SystemExit) as exc:
-            self._run(monkeypatch, str(tmp_path / 'raw'), str(tmp_path / 'out'))
-
-        assert exc.value.code == 2
-
-    def test_particiones_y_particion_fecha_son_excluyentes(
-        self, monkeypatch, origins, tmp_path
-    ):
-        with pytest.raises(SystemExit) as exc:
-            self._run(
-                monkeypatch, str(origins[0]), str(tmp_path / 'out'),
-                '-p', 'id', '--particion-fecha', COL
-            )
-
-        assert exc.value.code == 2
+        assert '--columna' in capsys.readouterr().err
 
     def test_fecha_con_formato_invalido(self, monkeypatch, origins, tmp_path):
         with pytest.raises(SystemExit) as exc:
             self._run(
                 monkeypatch, str(origins[0]), str(tmp_path / 'out'),
-                '--particion-fecha', COL, '--desde', '01/01/2025'
+                '--columna', COL, '--desde', '01/01/2025'
             )
 
         assert exc.value.code == 2
+
+
+# =============================================================================
+# partition_date con CSV de entrada
+# =============================================================================
+class TestPartitionDateCsv:
+
+    def test_csv_comprimidos_a_parquet_particionado(self, origins, tmp_path):
+        csvs = []
+
+        for origin, codec, suffix in zip(origins, ['gzip', 'zstd'], ['gz', 'zst']):
+            path = origin.with_name(origin.stem + f'.csv.{suffix}')
+            with pa.CompressedOutputStream(str(path), codec) as out:
+                pacsv.write_csv(pq.read_table(origin), out)
+            csvs.append(path)
+        target = tmp_path / 'yellow'
+
+        convert_by_date(csvs, target, COL, start=datetime(2025, 1, 1))
+
+        assert _ids_by_partition(_read(target), ['year', 'month']) == {
+            (2025, 1): [2, 3, 5],
+            (2025, 2): [4, 6, 7],
+        }
+
+    def test_columna_de_texto_en_csv(self, tmp_path):
+        origin = tmp_path / 'origen.csv'
+        origin.write_text('id,fecha\n1,ayer\n2,hoy\n')
+
+        with pytest.raises(ValueError, match='se requiere fecha o timestamp'):
+            convert_by_date([origin], tmp_path / 'out', 'fecha')

@@ -1,4 +1,4 @@
-"""Pruebas unitarias del módulo lakehouse.ingest.convert."""
+"""Pruebas unitarias de lakehouse.ingest.convert y de las validaciones comunes."""
 import sys
 from pathlib import Path
 
@@ -8,8 +8,11 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 import pytest
 
+from lakehouse.ingest import _validation
 from lakehouse.ingest import convert as mod
-from lakehouse.ingest.convert import AVAILABLE_COMPRESSIONS, _validate, convert, main
+from lakehouse.ingest._io import AVAILABLE_COMPRESSIONS
+from lakehouse.ingest._validation import validate as _validate
+from lakehouse.ingest.convert import convert, main
 
 
 # =============================================================================
@@ -63,7 +66,7 @@ class TestValidate:
             def is_available(_):
                 return False
 
-        monkeypatch.setattr(mod.pa, 'Codec', CodecSinSoporte)
+        monkeypatch.setattr(_validation.pa, 'Codec', CodecSinSoporte)
 
         with pytest.raises(ValueError, match='no incluye el códec'):
             _validate(origin, tmp_path / 'out', 'parquet', 'zstd', None, False)
@@ -320,3 +323,76 @@ class TestMain:
             )
 
         assert exc.value.code == 2
+
+
+# =============================================================================
+# convert con CSV de entrada
+# =============================================================================
+class TestConvertDesdeCsv:
+
+    @pytest.fixture
+    def csv_origin(self, tmp_path, sample_table) -> Path:
+        path = tmp_path / 'origen.csv'
+        pacsv.write_csv(sample_table, path)
+        return path
+
+    def test_csv_a_parquet(self, csv_origin, tmp_path, sample_table):
+        target = tmp_path / 'out.parquet'
+
+        convert(csv_origin, target)
+
+        assert pq.read_table(target).equals(sample_table)
+
+    @pytest.mark.parametrize('codec, suffix', [
+        ('gzip', 'gz'), ('bz2', 'bz2'), ('lz4', 'lz4'), ('zstd', 'zst'),
+    ])
+    def test_csv_comprimido_a_parquet(
+        self, tmp_path, sample_table, codec, suffix
+    ):
+        if not pa.Codec.is_available(codec):
+            pytest.skip(f'Códec {codec} no disponible')
+        origin = tmp_path / f'origen.csv.{suffix}'
+        with pa.CompressedOutputStream(str(origin), codec) as out:
+            pacsv.write_csv(sample_table, out)
+        target = tmp_path / 'out.parquet'
+
+        convert(origin, target)
+
+        assert pq.read_table(target).equals(sample_table)
+
+    def test_parquet_a_csv_a_parquet(self, origin, tmp_path, sample_table):
+        csv = tmp_path / 'intermedio.csv.gz'
+        target = tmp_path / 'final.parquet'
+
+        convert(origin, csv, 'csv', 'gzip')
+        convert(csv, target)
+
+        assert pq.read_table(target).equals(sample_table)
+
+    def test_csv_a_csv_comprimido(self, csv_origin, tmp_path, sample_table):
+        target = tmp_path / 'out.csv.zst'
+
+        convert(csv_origin, target, 'csv', 'zstd')
+
+        with pacsv.open_csv(pa.input_stream(str(target), compression='detect')) as r:
+            assert _rows_by_id(r.read_all()) == _rows_by_id(sample_table)
+
+    def test_csv_particionado(self, csv_origin, tmp_path, sample_table):
+        target = tmp_path / 'dataset'
+
+        convert(csv_origin, target, partition=['anio'])
+
+        result = ds.dataset(target, format='parquet', partitioning='hive').to_table()
+        assert result.num_rows == sample_table.num_rows
+        assert {p.name for p in target.iterdir()} == {'anio=2024', 'anio=2025'}
+
+    def test_columna_de_particion_inexistente_en_csv(self, csv_origin, tmp_path):
+        with pytest.raises(ValueError, match='Columnas inexistentes'):
+            convert(csv_origin, tmp_path / 'dataset', partition=['pais'])
+
+    def test_extension_no_soportada(self, tmp_path):
+        origin = tmp_path / 'origen.json'
+        origin.write_text('{}')
+
+        with pytest.raises(ValueError, match='no soportado'):
+            convert(origin, tmp_path / 'out.parquet')
