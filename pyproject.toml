@@ -20,6 +20,7 @@ lh-bench-compression = "lakehouse.benchmarks.compression:main"
 lh-delta-pyarrow = "lakehouse.delta.create_table_pyarrow:main"
 lh-delta-merge = "lakehouse.delta.merge_table:main"
 lh-delta-time-travel = "lakehouse.delta.time_travel:main"
+lh-delta-schema-evolution = "lakehouse.delta.schema_evolution:main"
 
 [dependency-groups]
 dev = [
