@@ -1,0 +1,20 @@
+{
+  "fecha": "2026-10-08T15:20:42",
+  "tabla": "data/delta_demo/yellow_tripdata",
+  "version": 1,
+  "metricas": {
+    "num_source_rows": 350,
+    "num_target_rows_inserted": 50,
+    "num_target_rows_updated": 300,
+    "num_target_rows_deleted": 0,
+    "num_target_rows_copied": 3474934,
+    "num_output_rows": 3475284,
+    "num_target_files_scanned": 0,
+    "num_target_files_skipped_during_scan": 3,
+    "num_target_files_added": 1,
+    "num_target_files_removed": 1,
+    "execution_time_ms": 3710,
+    "scan_time_ms": 873,
+    "rewrite_time_ms": 2705
+  }
+}
