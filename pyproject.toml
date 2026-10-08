@@ -8,7 +8,8 @@ authors = [
 requires-python = ">3.11"
 dependencies = [
     "pyarrow (>=25.0.1,<26.0.0)",
-    "pyspark (>=4.2.0,<5.0.0)"
+    "pyspark (>=4.2.0,<5.0.0)",
+    "deltalake (>=1.6.6,<2.0.0)"
 ]
 
 [project.scripts]
@@ -16,6 +17,7 @@ lh-convert = "lakehouse.ingest.convert:main"
 lh-merge = "lakehouse.ingest.merge:main"
 lh-partition-date = "lakehouse.ingest.partition_date:main"
 lh-bench-compression = "lakehouse.benchmarks.compression:main"
+lh-delta-pyarrow = "lakehouse.delta.create_table_pyarrow:main"
 
 [dependency-groups]
 dev = [
