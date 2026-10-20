@@ -19,6 +19,11 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [VACUUM: limpieza de archivos retirados](#vacuum-limpieza-de-archivos-retirados)
   - [Aprendizajes](#aprendizajes)
   - [Problemas y soluciones](#problemas-y-soluciones)
+- [Week 2](#week-2)
+  - [Catálogo y tabla Iceberg](#catálogo-y-tabla-iceberg)
+  - [Snapshots](#snapshots)
+  - [Hidden partitioning](#hidden-partitioning)
+  - [Problemas y soluciones de Iceberg](#problemas-y-soluciones-de-iceberg)
 
 ## Descripción
 
@@ -246,3 +251,63 @@ VACUUM borra los archivos que ninguna versión reciente usa: los que una versió
 | `get_add_actions()` devuelve en delta-rs 1.x una tabla de `arro3`, no de pyarrow, y no tiene `to_pydict()`. | Convertirla con `pa.table(...)`. |
 | Con la retención por defecto, VACUUM no podía borrar los archivos que OPTIMIZE acababa de retirar. | Retención de 0 h solo en la copia de práctica, documentada en el informe, con un *dry run* previo. |
 | VACUUM es irreversible y rompe el *time travel*. | Copia de la tabla antes de ejecutarlo y conservar en `docs/` los resultados que dependían de versiones antiguas. |
+
+## Week 2
+
+Notas de la segunda semana: la misma tabla de taxis en **Apache Iceberg** con `pyiceberg` (sin Spark), para compararla después con Delta.
+
+### Catálogo y tabla Iceberg
+
+Iceberg necesita un **catálogo** que guarde, para cada tabla, el puntero a su archivo de metadatos actual. Aquí es un catálogo SQL sobre SQLite (`data/iceberg/catalog.db`); los datos y metadatos van en `data/iceberg/warehouse/`. Se abre con `load_catalog(type='sql', uri='sqlite:///...', warehouse='file://...')`, sin archivo `.pyiceberg.yaml`.
+
+```bash
+poetry run lh-iceberg-catalog     # crea el catálogo y el namespace `lakehouse`, y los lista
+poetry run lh-iceberg-create      # crea lakehouse.yellow_tripdata, la carga y valida las filas
+poetry run lh-iceberg-snapshots   # snapshots, particiones y consulta por fecha -> docs/iceberg/
+```
+
+`lh-iceberg-create` lee el mismo origen que `lh-delta-pyarrow` (`data/interim/yellow_tripdata.parquet`), deriva el esquema del Parquet, crea la tabla con `catalog.create_table_transaction` y la carga con `table.append`. Si la tabla ya existe, la borra y la vuelve a crear. Al final compara las filas de cada mes entre el Parquet, la tabla Delta original y la tabla Iceberg:
+
+| Mes | Parquet | Delta | Iceberg |
+|---|---:|---:|---:|
+| 2025-01 | 3,475,234 | 3,475,234 | 3,475,234 |
+| 2025-02 | 3,577,542 | 3,577,542 | 3,577,542 |
+| 2025-03 | 4,145,225 | 4,145,225 | 4,145,225 |
+| **Total** | **11,198,001** | **11,198,001** | **11,198,001** |
+
+La carga tardó unos 12 s y ocupa 187 MB en 6 Parquet (Delta: 221 MB en 3 archivos; pyiceberg escribe en zstd y `write_deltalake` en snappy). Los metadatos ocupan 60 KB.
+
+### Snapshots
+
+Cada `append` crea un **snapshot**: una foto completa de qué archivos forman la tabla, enlazada con el anterior (`parent_id`). Es el equivalente de las versiones de Delta, pero con IDs aleatorios en vez de números consecutivos. La carga se hizo con un `append` por mes, así que hay tres ([informe](docs/iceberg/snapshots_20261020_165854.md)):
+
+| snapshot_id | Padre | committed_at (UTC) | Mes cargado | Filas totales |
+|---|---|---|---|---:|
+| `8250274427622097184` | — | 2026-10-20 21:57:27 | 2025-01 | 3,475,234 |
+| `6288329239070110` | `8250274427622097184` | 2026-10-20 21:57:30 | 2025-02 | 7,052,776 |
+| `3030128708969914628` (actual) | `6288329239070110` | 2026-10-20 21:57:34 | 2025-03 | 11,198,001 |
+
+Estos IDs son los que se usarán para el rollback. Si se vuelve a ejecutar `lh-iceberg-create`, la tabla se recrea y los IDs cambian.
+
+### Hidden partitioning
+
+En Delta, la partición es estilo Hive: `year` y `month` son columnas físicas, alguien tiene que calcularlas al escribir, y una consulta solo poda archivos si filtra por esas columnas (`year = 2025 AND month = 2`). Filtrar por `tpep_pickup_datetime` no aprovecha la partición.
+
+En Iceberg, la partición es una **transformación sobre una columna existente**: `month(tpep_pickup_datetime)`. La tabla no gana ninguna columna nueva; Iceberg calcula el mes al escribir y lo guarda en los metadatos de cada archivo. Al consultar, traduce el filtro sobre la fecha original al valor de la partición:
+
+```python
+table.scan(row_filter="tpep_pickup_datetime >= '2025-02-01T00:00:00' AND tpep_pickup_datetime < '2025-03-01T00:00:00'")
+```
+
+Esa consulta planificó **2 de 6 archivos** (solo los de febrero) y devolvió 3,577,542 filas, sin mencionar ninguna columna de partición. Otras ventajas: no hay columnas de partición que puedan quedar desalineadas con la fecha, y la partición se puede cambiar (por ejemplo, a `day`) sin reescribir la tabla ni las consultas.
+
+La tabla Iceberg conserva las columnas `year` y `month` solo porque vienen en el origen y así los datos son idénticos a los de Delta; la partición no las usa.
+
+### Problemas y soluciones de Iceberg
+
+| Problema | Solución |
+|---|---|
+| `poetry add pyiceberg` fallaba porque el proyecto aceptaba cualquier Python `>3.11` y pyiceberg exige `<4`. | Acotar `requires-python` a `">3.11,<4.0"`. |
+| Escribir en una tabla con `month()` falló con `pyiceberg_core needs to be installed`. | Instalar también el extra `pyiceberg-core`, que implementa las transformaciones de partición. |
+| `append` con un `RecordBatchReader` no funciona en tablas particionadas, y las 11 M de filas juntas no caben en la memoria libre. | Un `append` por mes (máximo ~2.4 GB de memoria). Deja un snapshot por mes en lugar de uno solo. |
+| `committed_at` de los snapshots está en UTC, no en la hora local. | Indicarlo en el informe. |
