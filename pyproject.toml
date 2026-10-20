@@ -5,11 +5,12 @@ description = ""
 authors = [
     {name = "Richard Andrés",email = "62516404+andresm-data@users.noreply.github.com"}
 ]
-requires-python = ">3.11"
+requires-python = ">3.11,<4.0"
 dependencies = [
     "pyarrow (>=25.0.1,<26.0.0)",
     "pyspark (>=4.2.0,<5.0.0)",
-    "deltalake (>=1.6.6,<2.0.0)"
+    "deltalake (>=1.6.6,<2.0.0)",
+    "pyiceberg[pyarrow,pyiceberg-core,sql-sqlite] (>=0.12.0,<0.13.0)"
 ]
 
 [project.scripts]
@@ -23,6 +24,9 @@ lh-delta-time-travel = "lakehouse.delta.time_travel:main"
 lh-delta-schema-evolution = "lakehouse.delta.schema_evolution:main"
 lh-delta-optimize = "lakehouse.delta.optimize:main"
 lh-delta-vacuum = "lakehouse.delta.vacuum:main"
+lh-iceberg-catalog = "lakehouse.iceberg.catalog:main"
+lh-iceberg-create = "lakehouse.iceberg.create_table:main"
+lh-iceberg-snapshots = "lakehouse.iceberg.snapshots:main"
 
 [dependency-groups]
 dev = [
