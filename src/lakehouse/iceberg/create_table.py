@@ -9,6 +9,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from deltalake import DeltaTable
 from pyiceberg.catalog import Catalog
+from pyiceberg.partitioning import PartitionField, PartitionSpec
+from pyiceberg.schema import assign_fresh_schema_ids
 from pyiceberg.table import Table
 from pyiceberg.transforms import MonthTransform
 
@@ -53,8 +55,10 @@ def create_table(catalog: Catalog, identifier: str, schema: pa.Schema) -> Table:
     """Crea la tabla Iceberg particionada por `month(tpep_pickup_datetime)`.
 
     La partición es una transformación sobre la columna de fecha: no se
-    agrega ninguna columna nueva a la tabla. Si la tabla ya existe, se borra
-    del catálogo junto con sus archivos y se vuelve a crear.
+    agrega ninguna columna nueva a la tabla. Se pasa al crear la tabla para
+    que sea su única spec (`spec_id = 0`); si se agregara después con
+    `update_spec`, la tabla tendría además una spec 0 vacía. Si la tabla ya
+    existe, se borra del catálogo junto con sus archivos y se vuelve a crear.
 
     Args:
         catalog (Catalog): Catálogo de Iceberg.
@@ -70,11 +74,19 @@ def create_table(catalog: Catalog, identifier: str, schema: pa.Schema) -> Table:
         catalog.drop_table(identifier)
         shutil.rmtree(location, ignore_errors=True)
 
-    with catalog.create_table_transaction(identifier, schema=schema) as tx:
-        with tx.update_spec() as spec:
-            spec.add_field(DATE_COLUMN, MonthTransform(), PARTITION_NAME)
+    # La spec referencia la columna por ID, así que el esquema Arrow se
+    # convierte antes a uno de Iceberg con IDs asignados.
+    iceberg_schema = assign_fresh_schema_ids(
+        Catalog._convert_schema_if_needed(schema)
+    )
+    spec = PartitionSpec(PartitionField(
+        source_id=iceberg_schema.find_field(DATE_COLUMN).field_id,
+        field_id=1000, transform=MonthTransform(), name=PARTITION_NAME,
+    ))
 
-    return catalog.load_table(identifier)
+    return catalog.create_table(
+        identifier, schema=iceberg_schema, partition_spec=spec
+    )
 
 
 # =============================================================================

@@ -21,6 +21,12 @@ class TestCreateTable:
         assert table.schema().column_names == pq.read_schema(origin).names
         assert table.current_snapshot() is None
 
+    def test_particion_es_la_unica_spec(self, catalog, origin):
+        table = create_table(catalog, IDENTIFIER, pq.read_schema(origin))
+
+        assert list(table.specs()) == [0]
+        assert table.spec().spec_id == 0
+
     def test_recrea_tabla_existente(self, catalog, origin):
         first = create_table(catalog, IDENTIFIER, pq.read_schema(origin))
         load(first, origin)
