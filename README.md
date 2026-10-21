@@ -264,9 +264,10 @@ Iceberg necesita un **catálogo** que guarde, para cada tabla, el puntero a su a
 poetry run lh-iceberg-catalog     # crea el catálogo y el namespace `lakehouse`, y los lista
 poetry run lh-iceberg-create      # crea lakehouse.yellow_tripdata, la carga y valida las filas
 poetry run lh-iceberg-snapshots   # snapshots, particiones y consulta por fecha -> docs/iceberg/
+poetry run lh-iceberg-ops         # evolución de partición y rollback -> docs/iceberg/
 ```
 
-`lh-iceberg-create` lee el mismo origen que `lh-delta-pyarrow` (`data/interim/yellow_tripdata.parquet`), deriva el esquema del Parquet, crea la tabla con `catalog.create_table_transaction` y la carga con `table.append`. Si la tabla ya existe, la borra y la vuelve a crear. Al final compara las filas de cada mes entre el Parquet, la tabla Delta original y la tabla Iceberg:
+`lh-iceberg-create` lee el mismo origen que `lh-delta-pyarrow` (`data/interim/yellow_tripdata.parquet`), deriva el esquema del Parquet, crea la tabla con `catalog.create_table` (con la partición como única spec) y la carga con `table.append`. Si la tabla ya existe, la borra y la vuelve a crear. Al final compara las filas de cada mes entre el Parquet, la tabla Delta original y la tabla Iceberg:
 
 | Mes | Parquet | Delta | Iceberg |
 |---|---:|---:|---:|
@@ -303,6 +304,41 @@ Esa consulta planificó **2 de 6 archivos** (solo los de febrero) y devolvió 3,
 
 La tabla Iceberg conserva las columnas `year` y `month` solo porque vienen en el origen y así los datos son idénticos a los de Delta; la partición no las usa.
 
+### Evolución de partición
+
+`lh-iceberg-ops` crea una tabla aparte, `lakehouse.yellow_tripdata_ops`, con el mismo Parquet: carga enero y febrero con `month()`, cambia la partición a `day()` y escribe marzo como dato nuevo ([informe](docs/iceberg/ops_20261021_082027.md)). La tabla de los snapshots no se toca y la demo se puede repetir.
+
+```python
+with table.update_spec() as spec:
+    spec.remove_field('pickup_month')
+    spec.add_field('tpep_pickup_datetime', DayTransform(), 'pickup_day')
+```
+
+El cambio solo agrega una spec a los metadatos; no mueve ni reescribe ningún archivo:
+
+| spec_id | Partición | Archivos | Filas |
+|---|---|---:|---:|
+| 0 | `month(tpep_pickup_datetime)` (enero y febrero) | 4 | 7,052,776 |
+| 1 (actual) | `day(tpep_pickup_datetime)` (marzo) | 31 | 4,145,225 |
+
+Cada archivo guarda el `spec_id` con el que se escribió (`table.inspect.files()`), y al consultar Iceberg poda cada archivo con su propia spec. El filtro `2025-02-15 <= tpep_pickup_datetime < 2025-03-15` planificó 2 archivos de la spec 0 (febrero completo) y 14 de la spec 1 (un archivo por día), y devolvió 3,660,313 filas, las mismas que el Parquet de origen. En Delta, cambiar la partición obliga a reescribir toda la tabla.
+
+### Rollback
+
+PyIceberg 0.12.0 trae `rollback_to_snapshot` en `manage_snapshots()` (no aparece en la documentación oficial, pero `dir(table.manage_snapshots())` lo muestra), así que no hizo falta un rollback lógico con `overwrite`. El módulo `lakehouse.iceberg.ops` lo envuelve en `rollback_to()`:
+
+| Paso | snapshot actual | Filas |
+|---|---|---:|
+| Snapshot guardado | `2813714731433187947` | 11,198,001 |
+| Append duplicado de marzo (escritura mala) | `2764277404457769105` | 15,343,226 |
+| Después de `rollback_to(table, 2813714731433187947)` | `2813714731433187947` | 11,198,001 |
+
+- El rollback **mueve el puntero** de la rama `main` al snapshot guardado. No crea un snapshot nuevo ni toca archivos.
+- El snapshot malo sigue en `table.snapshots()` y se puede leer con `table.scan(snapshot_id=...)` (15,343,226 filas) hasta que se expire.
+- `rollback_to_snapshot` exige que el destino sea ancestro del actual. Un ID inexistente o el snapshot malo (que ya no es ancestro) lanzan `ValueError` sin cambiar la tabla. Para volver "hacia adelante" habría que usar `set_current_snapshot`.
+
+**Comparación con Delta (`RESTORE`).** `DeltaTable.restore(version)` escribe un commit nuevo (versión N+1) que quita los archivos agregados y vuelve a agregar los eliminados. El historial de Delta es lineal y solo crece; el de Iceberg es un árbol de snapshots con un puntero que se mueve, y el cambio de puntero queda en `table.history()`.
+
 ### Problemas y soluciones de Iceberg
 
 | Problema | Solución |
@@ -311,3 +347,5 @@ La tabla Iceberg conserva las columnas `year` y `month` solo porque vienen en el
 | Escribir en una tabla con `month()` falló con `pyiceberg_core needs to be installed`. | Instalar también el extra `pyiceberg-core`, que implementa las transformaciones de partición. |
 | `append` con un `RecordBatchReader` no funciona en tablas particionadas, y las 11 M de filas juntas no caben en la memoria libre. | Un `append` por mes (máximo ~2.4 GB de memoria). Deja un snapshot por mes en lugar de uno solo. |
 | `committed_at` de los snapshots está en UTC, no en la hora local. | Indicarlo en el informe. |
+| Agregar la partición con `update_spec` dentro de `create_table_transaction` deja una spec 0 vacía y la de `month()` como spec 1; después de evolucionar, la tabla tenía 3 specs. | Crear la tabla con `catalog.create_table(..., partition_spec=...)`. Como la spec referencia la columna por ID, primero se convierte el esquema Arrow a uno de Iceberg con `assign_fresh_schema_ids`. |
+| La documentación de PyIceberg no muestra un rollback en `manage_snapshots()`. | Revisar `dir(table.manage_snapshots())`: la 0.12.0 ya trae `rollback_to_snapshot` y `rollback_to_timestamp`. |

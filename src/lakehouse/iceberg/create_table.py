@@ -9,6 +9,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from deltalake import DeltaTable
 from pyiceberg.catalog import Catalog
+from pyiceberg.partitioning import PartitionField, PartitionSpec
+from pyiceberg.schema import assign_fresh_schema_ids
 from pyiceberg.table import Table
 from pyiceberg.transforms import MonthTransform
 
@@ -38,13 +40,19 @@ def _counts(table: pa.Table) -> dict[tuple, int]:
 
 
 # =============================================================================
-def describe_spec(table: Table) -> str:
-    """Describe la partición como `month(tpep_pickup_datetime) -> pickup_month`."""
+def describe_spec(table: Table, spec: PartitionSpec | None = None) -> str:
+    """Describe la partición como `month(tpep_pickup_datetime) -> pickup_month`.
+
+    Args:
+        table (Table): Tabla Iceberg.
+        spec (PartitionSpec | None): Spec a describir; por defecto, la actual.
+    """
     schema = table.schema()
+    spec = table.spec() if spec is None else spec
 
     return ', '.join(
         f'{f.transform}({schema.find_column_name(f.source_id)}) -> {f.name}'
-        for f in table.spec().fields
+        for f in spec.fields
     ) or 'sin partición'
 
 
@@ -53,8 +61,10 @@ def create_table(catalog: Catalog, identifier: str, schema: pa.Schema) -> Table:
     """Crea la tabla Iceberg particionada por `month(tpep_pickup_datetime)`.
 
     La partición es una transformación sobre la columna de fecha: no se
-    agrega ninguna columna nueva a la tabla. Si la tabla ya existe, se borra
-    del catálogo junto con sus archivos y se vuelve a crear.
+    agrega ninguna columna nueva a la tabla. Se pasa al crear la tabla para
+    que sea su única spec (`spec_id = 0`); si se agregara después con
+    `update_spec`, la tabla tendría además una spec 0 vacía. Si la tabla ya
+    existe, se borra del catálogo junto con sus archivos y se vuelve a crear.
 
     Args:
         catalog (Catalog): Catálogo de Iceberg.
@@ -70,15 +80,30 @@ def create_table(catalog: Catalog, identifier: str, schema: pa.Schema) -> Table:
         catalog.drop_table(identifier)
         shutil.rmtree(location, ignore_errors=True)
 
-    with catalog.create_table_transaction(identifier, schema=schema) as tx:
-        with tx.update_spec() as spec:
-            spec.add_field(DATE_COLUMN, MonthTransform(), PARTITION_NAME)
+    # La spec referencia la columna por ID, así que el esquema Arrow se
+    # convierte antes a uno de Iceberg con IDs asignados.
+    iceberg_schema = assign_fresh_schema_ids(
+        Catalog._convert_schema_if_needed(schema)
+    )
+    spec = PartitionSpec(PartitionField(
+        source_id=iceberg_schema.find_field(DATE_COLUMN).field_id,
+        field_id=1000, transform=MonthTransform(), name=PARTITION_NAME,
+    ))
 
-    return catalog.load_table(identifier)
+    return catalog.create_table(
+        identifier, schema=iceberg_schema, partition_spec=spec
+    )
 
 
 # =============================================================================
-def load(table: Table, origin: Path) -> list[tuple[int, int]]:
+def list_months(origin: Path) -> list[tuple[int, int]]:
+    """Los (`year`, `month`) del Parquet de origen, en orden."""
+    return sorted(_counts(pq.read_table(origin, columns=COUNT_KEY)))
+
+
+# =============================================================================
+def load(table: Table, origin: Path,
+         months: list[tuple[int, int]] | None = None) -> list[tuple[int, int]]:
     """Carga el Parquet en la tabla con un `append` por mes.
 
     pyiceberg no acepta un flujo de lotes en tablas particionadas, y las
@@ -88,11 +113,13 @@ def load(table: Table, origin: Path) -> list[tuple[int, int]]:
     Args:
         table (Table): Tabla Iceberg de destino.
         origin (Path): Parquet de origen con las columnas `year` y `month`.
+        months (list[tuple[int, int]] | None): Meses a cargar; por defecto,
+            todos los del Parquet.
 
     Returns:
         list[tuple[int, int]]: Los (`year`, `month`) cargados, en orden.
     """
-    months = sorted(_counts(pq.read_table(origin, columns=COUNT_KEY)))
+    months = list_months(origin) if months is None else sorted(months)
 
     for year, month in months:
         data = pq.read_table(
