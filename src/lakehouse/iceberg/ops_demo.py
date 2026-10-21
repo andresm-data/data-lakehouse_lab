@@ -225,7 +225,7 @@ def render(identifier: str, table: Table, result: dict) -> str:
             ['snapshot_id', 'parent_id', 'Operación', 'Total filas',
              'En línea actual', 'Actual'],
             [[s['snapshot_id'], s['parent_id'] or '—', s['operacion'],
-              s['resumen'].get('total-records', ''),
+              f'{int(s["resumen"].get("total-records", 0)):,}',
               'Sí' if s['en_linea_actual'] else 'No',
               'Sí' if s['actual'] else '']
              for s in rb['historial']],
