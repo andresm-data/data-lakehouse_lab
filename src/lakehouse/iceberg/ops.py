@@ -1,8 +1,10 @@
 """Operaciones sobre tablas Iceberg: evolución de partición y rollback."""
 from pyiceberg.table import Table
+from pyiceberg.table.snapshots import ancestors_of
 from pyiceberg.transforms import Transform
 
 from lakehouse.iceberg.create_table import describe_spec
+from lakehouse.iceberg.snapshots import snapshot_rows
 
 
 # =============================================================================
@@ -71,3 +73,52 @@ def files_by_spec(table: Table) -> list[dict]:
         entry['filas'] += row['record_count']
 
     return [totals[k] for k in sorted(totals)]
+
+
+# =============================================================================
+def list_snapshots(table: Table) -> list[dict]:
+    """Historial de snapshots, del más antiguo al actual.
+
+    Agrega a cada fila de `snapshot_rows` la clave `en_linea_actual`: si el
+    snapshot es ancestro del actual (o el actual). Después de un rollback,
+    los snapshots descartados siguen en la lista con `en_linea_actual` en
+    `False`, y se pueden leer con `table.scan(snapshot_id=...)`.
+
+    Returns:
+        list[dict]: Una fila por snapshot.
+    """
+    lineage = {
+        s.snapshot_id for s in ancestors_of(table.current_snapshot(), table.metadata)
+    }
+
+    return [
+        {**row, 'en_linea_actual': row['snapshot_id'] in lineage}
+        for row in snapshot_rows(table)
+    ]
+
+
+# =============================================================================
+def rollback_to(table: Table, snapshot_id: int) -> Table:
+    """Vuelve la tabla a un snapshot anterior moviendo el puntero `main`.
+
+    No reescribe datos ni crea un snapshot nuevo: el snapshot destino pasa a
+    ser el actual y los posteriores quedan en el historial.
+
+    Args:
+        table (Table): Tabla Iceberg.
+        snapshot_id (int): Snapshot destino; debe ser ancestro del actual.
+
+    Returns:
+        Table: La misma tabla, ya en el snapshot destino.
+
+    Raises:
+        ValueError: Si el snapshot no existe o no es ancestro del actual. La
+            tabla no cambia.
+    """
+    try:
+        table.manage_snapshots().rollback_to_snapshot(snapshot_id).commit()
+
+    except ValueError as e:
+        raise ValueError(f'No se puede volver al snapshot {snapshot_id}: {e}') from e
+
+    return table
