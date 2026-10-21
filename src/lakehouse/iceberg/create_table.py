@@ -40,13 +40,19 @@ def _counts(table: pa.Table) -> dict[tuple, int]:
 
 
 # =============================================================================
-def describe_spec(table: Table) -> str:
-    """Describe la partición como `month(tpep_pickup_datetime) -> pickup_month`."""
+def describe_spec(table: Table, spec: PartitionSpec | None = None) -> str:
+    """Describe la partición como `month(tpep_pickup_datetime) -> pickup_month`.
+
+    Args:
+        table (Table): Tabla Iceberg.
+        spec (PartitionSpec | None): Spec a describir; por defecto, la actual.
+    """
     schema = table.schema()
+    spec = table.spec() if spec is None else spec
 
     return ', '.join(
         f'{f.transform}({schema.find_column_name(f.source_id)}) -> {f.name}'
-        for f in table.spec().fields
+        for f in spec.fields
     ) or 'sin partición'
 
 
