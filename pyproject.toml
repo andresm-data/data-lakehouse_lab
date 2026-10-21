@@ -27,6 +27,7 @@ lh-delta-vacuum = "lakehouse.delta.vacuum:main"
 lh-iceberg-catalog = "lakehouse.iceberg.catalog:main"
 lh-iceberg-create = "lakehouse.iceberg.create_table:main"
 lh-iceberg-snapshots = "lakehouse.iceberg.snapshots:main"
+lh-iceberg-ops = "lakehouse.iceberg.ops_demo:main"
 
 [dependency-groups]
 dev = [

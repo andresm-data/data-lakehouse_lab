@@ -96,7 +96,14 @@ def create_table(catalog: Catalog, identifier: str, schema: pa.Schema) -> Table:
 
 
 # =============================================================================
-def load(table: Table, origin: Path) -> list[tuple[int, int]]:
+def list_months(origin: Path) -> list[tuple[int, int]]:
+    """Los (`year`, `month`) del Parquet de origen, en orden."""
+    return sorted(_counts(pq.read_table(origin, columns=COUNT_KEY)))
+
+
+# =============================================================================
+def load(table: Table, origin: Path,
+         months: list[tuple[int, int]] | None = None) -> list[tuple[int, int]]:
     """Carga el Parquet en la tabla con un `append` por mes.
 
     pyiceberg no acepta un flujo de lotes en tablas particionadas, y las
@@ -106,11 +113,13 @@ def load(table: Table, origin: Path) -> list[tuple[int, int]]:
     Args:
         table (Table): Tabla Iceberg de destino.
         origin (Path): Parquet de origen con las columnas `year` y `month`.
+        months (list[tuple[int, int]] | None): Meses a cargar; por defecto,
+            todos los del Parquet.
 
     Returns:
         list[tuple[int, int]]: Los (`year`, `month`) cargados, en orden.
     """
-    months = sorted(_counts(pq.read_table(origin, columns=COUNT_KEY)))
+    months = list_months(origin) if months is None else sorted(months)
 
     for year, month in months:
         data = pq.read_table(
