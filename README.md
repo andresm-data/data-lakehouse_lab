@@ -24,6 +24,7 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Snapshots](#snapshots)
   - [Hidden partitioning](#hidden-partitioning)
   - [Problemas y soluciones de Iceberg](#problemas-y-soluciones-de-iceberg)
+  - [Spark con Delta e Iceberg](#spark-con-delta-e-iceberg)
 
 ## Descripción
 
@@ -58,7 +59,7 @@ Cada experimento se ejecuta sobre las mismas tablas escritas en ambos formatos:
 ### Stack tecnológico
 
 - **Python** 3.11+
-- **PySpark** 4.x como motor de procesamiento
+- **PySpark** 4.1 como motor de procesamiento, con `delta-spark` y el runtime de Iceberg
 - **PyArrow** para lectura y escritura de Parquet
 - **Delta Lake** y **Apache Iceberg** como formatos de tabla
 - **Poetry** para la gestión de dependencias
@@ -349,3 +350,36 @@ PyIceberg 0.12.0 trae `rollback_to_snapshot` en `manage_snapshots()` (no aparece
 | `committed_at` de los snapshots está en UTC, no en la hora local. | Indicarlo en el informe. |
 | Agregar la partición con `update_spec` dentro de `create_table_transaction` deja una spec 0 vacía y la de `month()` como spec 1; después de evolucionar, la tabla tenía 3 specs. | Crear la tabla con `catalog.create_table(..., partition_spec=...)`. Como la spec referencia la columna por ID, primero se convierte el esquema Arrow a uno de Iceberg con `assign_fresh_schema_ids`. |
 | La documentación de PyIceberg no muestra un rollback en `manage_snapshots()`. | Revisar `dir(table.manage_snapshots())`: la 0.12.0 ya trae `rollback_to_snapshot` y `rollback_to_timestamp`. |
+
+### Spark con Delta e Iceberg
+
+Spark lee y escribe las dos tablas con una sola sesión. `lakehouse.spark.spark_session.build_spark_session()` activa las extensiones de Delta e Iceberg, usa `DeltaCatalog` como `spark_catalog` y registra el catálogo Iceberg `lakehouse` sobre el mismo SQLite de PyIceberg (`type=jdbc`). Las versiones que funcionaron y por qué se eligieron están en [docs/spark/versiones.md](docs/spark/versiones.md): Spark 4.1.3, Scala 2.13, Delta 4.4.1, Iceberg 1.12.0 y Java 21.
+
+```bash
+poetry run lh-spark-read-write    # lee Delta e Iceberg, escribe tablas de prueba -> docs/spark/
+```
+
+```python
+from lakehouse.spark.spark_session import build_spark_session
+
+spark = build_spark_session()
+spark.read.format('delta').load('data/delta/yellow_tripdata_pyarrow')
+spark.table('lakehouse.lakehouse.yellow_tripdata')    # catálogo.namespace.tabla
+```
+
+El comando valida cada lectura contra otro motor (`deltalake` para Delta, `pyiceberg` para Iceberg) y luego escribe 3 filas en `data/delta/spark_smoke` y en `lakehouse.spark_smoke`, que relee con Spark y con el otro motor ([informe](docs/spark/read_write_20261021_155755.md)):
+
+| Prueba | Delta | Iceberg |
+|---|---|---|
+| Lectura: filas (Spark vs otro motor) | 11,198,001 = 11,198,001 | 11,198,001 = 11,198,001 |
+| Lectura: esquema (22 columnas, nombres y tipos) | Igual | Igual |
+| Escritura de 3 filas y relectura con Spark | OK | OK |
+| Relectura con `deltalake` / `pyiceberg` | OK | OK |
+
+La primera ejecución descarga los jars de Maven (unos 145 MB, en `~/.ivy2.5.2/`); las siguientes los toman de esa caché.
+
+| Problema | Solución |
+|---|---|
+| No existe `iceberg-spark-runtime` para Spark 4.2, la versión que tenía el proyecto. | Bajar PySpark a 4.1.x, la versión más nueva con runtime de Iceberg y de Delta. |
+| Spark tiene que encontrar las tablas creadas con PyIceberg. | Catálogo `jdbc` (el equivalente Java del catálogo SQL) con el mismo nombre, `lakehouse`, y `jdbc.schema-version=V1`, porque PyIceberg crea el SQLite con la columna `iceberg_type`. |
+| Los timestamps sin zona de las tablas se leen en Spark como `timestamp_ntz`, no `timestamp`. | Al comparar esquemas, traducir el de Arrow con `from_arrow_schema(..., prefer_timestamp_ntz=True)`. |
