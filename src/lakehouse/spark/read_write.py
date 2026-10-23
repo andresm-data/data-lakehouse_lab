@@ -1,10 +1,12 @@
-"""Lee y escribe tablas Delta e Iceberg con Spark y valida filas y esquema."""
+"""Lee y escribe tablas Parquet, Delta e Iceberg con Spark y valida filas y
+esquema."""
 import argparse
 import sys
 from datetime import date, datetime
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.dataset as ds
 from deltalake import DeltaTable
 from pyiceberg.catalog import Catalog
 from pyspark.sql import DataFrame, SparkSession
@@ -21,6 +23,8 @@ from lakehouse.spark.spark_session import build_spark_session, versions
 
 
 # =============================================================================
+PARQUET_SOURCE = Path('data/interim/yellow_tripdata.parquet')
+PARQUET_TARGET = Path('data/parquet/spark_smoke')
 DELTA_SOURCE = Path('data/delta/yellow_tripdata_pyarrow')
 DELTA_TARGET = Path('data/delta/spark_smoke')
 ICEBERG_TARGET = f'{NAMESPACE}.spark_smoke'
@@ -85,6 +89,16 @@ def check(df: DataFrame, expected_rows: int, expected_schema: pa.Schema) -> dict
 
 
 # =============================================================================
+def read_parquet(spark: SparkSession, path: Path) -> dict:
+    """Lee un archivo o directorio Parquet con Spark y lo valida contra
+    `pyarrow`."""
+    df = spark.read.parquet(str(path.resolve()))
+    dataset = ds.dataset(path, format='parquet')
+
+    return check(df, dataset.count_rows(), dataset.schema)
+
+
+# =============================================================================
 def read_delta(spark: SparkSession, path: Path) -> dict:
     """Lee una tabla Delta con Spark y la valida contra `deltalake`."""
     df = spark.read.format('delta').load(str(path.resolve()))
@@ -113,6 +127,13 @@ def read_iceberg(spark: SparkSession, catalog: Catalog, identifier: str) -> dict
 def sample(spark: SparkSession) -> DataFrame:
     """DataFrame pequeño de prueba para las escrituras."""
     return spark.createDataFrame(SAMPLE_ROWS, SAMPLE_SCHEMA)
+
+
+# =============================================================================
+def write_parquet(df: DataFrame, path: Path) -> None:
+    """Escribe (sobrescribe) el DataFrame como Parquet en el directorio
+    `path`."""
+    df.write.mode('overwrite').parquet(str(path.resolve()))
 
 
 # =============================================================================
@@ -157,6 +178,17 @@ def verify_write(written: DataFrame, spark_rows: list, other_rows: list) -> dict
 
 
 # =============================================================================
+def roundtrip_parquet(spark: SparkSession, path: Path) -> dict:
+    """Escribe la muestra en Parquet y la relee con Spark y con `pyarrow`."""
+    df = sample(spark)
+    write_parquet(df, path)
+    spark_rows = spark.read.parquet(str(path.resolve())).collect()
+    other = ds.dataset(path, format='parquet').to_table().to_pylist()
+
+    return verify_write(df, spark_rows, [tuple(r.values()) for r in other])
+
+
+# =============================================================================
 def roundtrip_delta(spark: SparkSession, path: Path) -> dict:
     """Escribe la muestra en Delta y la relee con Spark y con `deltalake`."""
     df = sample(spark)
@@ -193,21 +225,28 @@ def _mark(ok: bool) -> str:
 
 
 # =============================================================================
+READS = [('parquet_lectura', 'Parquet'), ('delta_lectura', 'Delta'),
+         ('iceberg_lectura', 'Iceberg')]
+WRITES = [('parquet_escritura', 'Parquet'), ('delta_escritura', 'Delta'),
+          ('iceberg_escritura', 'Iceberg')]
+
+
+# =============================================================================
 def render(vers: dict[str, str], results: dict[str, dict],
            names: dict[str, str]) -> str:
     """Arma el informe en Markdown.
 
     Args:
         vers (dict[str, str]): Versiones de `versions()`.
-        results (dict[str, dict]): Resultados por paso (`delta_lectura`,
-            `iceberg_lectura`, `delta_escritura`, `iceberg_escritura`).
+        results (dict[str, dict]): Resultados por paso (`<formato>_lectura`
+            y `<formato>_escritura`, con `parquet`, `delta` e `iceberg`).
         names (dict[str, str]): Tabla o ruta de cada paso.
 
     Returns:
         str: Contenido del informe.
     """
     lines = [
-        '# Spark con Delta e Iceberg: lectura y escritura',
+        '# Spark con Parquet, Delta e Iceberg: lectura y escritura',
         '',
         f'- Fecha: {datetime.now():%Y-%m-%d %H:%M:%S}',
         f'- Resultado: {_mark(all_ok(results))}',
@@ -224,7 +263,7 @@ def render(vers: dict[str, str], results: dict[str, dict],
         '|---|---|---:|---:|:---:|:---:|',
     ]
 
-    for key, label in [('delta_lectura', 'Delta'), ('iceberg_lectura', 'Iceberg')]:
+    for key, label in READS:
         r = results[key]
         lines.append(
             f'| {label} | `{names[key]}` | {r["filas"]:,} | '
@@ -234,8 +273,9 @@ def render(vers: dict[str, str], results: dict[str, dict],
 
     lines += [
         '',
-        'Las filas y el esquema esperados vienen de otro motor: `deltalake` '
-        'para Delta y `pyiceberg` (snapshot actual) para Iceberg.',
+        'Las filas y el esquema esperados vienen de otro motor: `pyarrow` '
+        'para Parquet, `deltalake` para Delta y `pyiceberg` (snapshot actual) '
+        'para Iceberg.',
         '',
         '## Escritura',
         '',
@@ -243,8 +283,7 @@ def render(vers: dict[str, str], results: dict[str, dict],
         '|---|---|---:|:---:|:---:|',
     ]
 
-    for key, label in [('delta_escritura', 'Delta'),
-                       ('iceberg_escritura', 'Iceberg')]:
+    for key, label in WRITES:
         r = results[key]
         lines.append(
             f'| {label} | `{names[key]}` | {r["filas"]} | '
@@ -253,7 +292,7 @@ def render(vers: dict[str, str], results: dict[str, dict],
 
     lines += ['', '## Esquema leído', '']
 
-    for key, label in [('delta_lectura', 'Delta'), ('iceberg_lectura', 'Iceberg')]:
+    for key, label in READS:
         r = results[key]
         cols = ', '.join(f'`{n}: {t}`' for n, t in r['columnas'])
         lines.append(f'- **{label}**: {cols}')
@@ -286,8 +325,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--catalogo', type=Path, default=CATALOG_DB)
     parser.add_argument('--warehouse', type=Path, default=WAREHOUSE)
+    parser.add_argument('--parquet', type=Path, default=PARQUET_SOURCE)
     parser.add_argument('--delta', type=Path, default=DELTA_SOURCE)
     parser.add_argument('--iceberg', default=IDENTIFIER)
+    parser.add_argument('--parquet-destino', type=Path,
+                        default=PARQUET_TARGET)
     parser.add_argument('--delta-destino', type=Path, default=DELTA_TARGET)
     parser.add_argument('--iceberg-destino', default=ICEBERG_TARGET)
     parser.add_argument('--salida', type=Path, default=REPORT_DIR)
@@ -300,8 +342,11 @@ def main() -> int:
     try:
         vers = versions(spark)
         results = {
+            'parquet_lectura': read_parquet(spark, args.parquet),
             'delta_lectura': read_delta(spark, args.delta),
             'iceberg_lectura': read_iceberg(spark, catalog, args.iceberg),
+            'parquet_escritura': roundtrip_parquet(spark,
+                                                   args.parquet_destino),
             'delta_escritura': roundtrip_delta(spark, args.delta_destino),
             'iceberg_escritura': roundtrip_iceberg(
                 spark, catalog, args.iceberg_destino
@@ -312,8 +357,10 @@ def main() -> int:
         spark.stop()
 
     names = {
+        'parquet_lectura': str(args.parquet),
         'delta_lectura': str(args.delta),
         'iceberg_lectura': spark_name(args.iceberg),
+        'parquet_escritura': str(args.parquet_destino),
         'delta_escritura': str(args.delta_destino),
         'iceberg_escritura': spark_name(args.iceberg_destino),
     }
