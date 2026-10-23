@@ -20,12 +20,19 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Aprendizajes](#aprendizajes)
   - [Problemas y soluciones](#problemas-y-soluciones)
 - [Week 2](#week-2)
+  - [Resumen de la semana 2](#resumen-de-la-semana-2)
   - [Catálogo y tabla Iceberg](#catálogo-y-tabla-iceberg)
   - [Snapshots](#snapshots)
   - [Hidden partitioning](#hidden-partitioning)
+  - [Evolución de partición](#evolución-de-partición)
+  - [Rollback](#rollback)
   - [Problemas y soluciones de Iceberg](#problemas-y-soluciones-de-iceberg)
   - [Spark con Delta e Iceberg](#spark-con-delta-e-iceberg)
   - [Actualizar un mes completo con Spark](#actualizar-un-mes-completo-con-spark)
+  - [Versiones finales](#versiones-finales)
+  - [Problemas de compatibilidad de versiones](#problemas-de-compatibilidad-de-versiones)
+  - [Cómo ejecutar los jobs y las pruebas](#cómo-ejecutar-los-jobs-y-las-pruebas)
+  - [Decisiones y siguientes pasos](#decisiones-y-siguientes-pasos)
 
 ## Descripción
 
@@ -81,8 +88,10 @@ lakehouse-lab/
 │       ├── spark/            # Configuración de la sesión de Spark
 │       ├── delta/            # Creación y operaciones sobre tablas Delta
 │       ├── iceberg/          # Creación y operaciones sobre tablas Iceberg
-│       └── benchmarks/       # Experimentos y medición de métricas
+│       ├── benchmarks/       # Experimentos y medición de métricas
+│       └── versions.py       # Versiones de Spark, Delta e Iceberg
 ├── tests/                    # Pruebas unitarias
+├── Makefile                  # make install, test, test-spark, test-report
 ├── pyproject.toml            # Configuración del proyecto y dependencias
 ├── poetry.lock
 └── README.md
@@ -93,8 +102,10 @@ lakehouse-lab/
 Instala las dependencias y los comandos del proyecto con:
 
 ```bash
-poetry install
+poetry install    # o: make install
 ```
+
+Spark necesita además un JDK 17 o 21 en el sistema (ver [Versiones finales](#versiones-finales)).
 
 ### Comandos de ingesta
 
@@ -256,7 +267,30 @@ VACUUM borra los archivos que ninguna versión reciente usa: los que una versió
 
 ## Week 2
 
-Notas de la segunda semana: la misma tabla de taxis en **Apache Iceberg** con `pyiceberg` (sin Spark), para compararla después con Delta.
+Notas de la segunda semana: la misma tabla de taxis en **Apache Iceberg** con `pyiceberg` (sin Spark), y después las tablas Parquet, Delta e Iceberg leídas y escritas con **Spark**, para compararlas en la semana 3.
+
+### Resumen de la semana 2
+
+| Pieza | Qué hace | Comando |
+|---|---|---|
+| Catálogo y tabla Iceberg | Catálogo SQL sobre SQLite y `lakehouse.yellow_tripdata` cargada con PyIceberg | `lh-iceberg-catalog`, `lh-iceberg-create` |
+| Snapshots y particiones | Historial de snapshots, *hidden partitioning* y consulta por fecha | `lh-iceberg-snapshots` |
+| Evolución de partición y rollback | `month()` → `day()` sin reescribir y vuelta a un snapshot anterior | `lh-iceberg-ops` |
+| Spark session | Una sola sesión con Delta e Iceberg, sobre el mismo catálogo de PyIceberg | `lakehouse.spark.spark_session` |
+| Lectura y escritura con Spark | Lee y escribe Parquet, Delta e Iceberg y valida cada uno contra otro motor | `lh-spark-read-write` |
+| Actualizar un mes | Reescribe febrero en Delta e Iceberg y mide tiempos, archivos y tamaño | `lh-spark-update-month` |
+| Versiones fijadas | Versiones exactas en `pyproject.toml` y en `src/lakehouse/versions.py` | — |
+| Pruebas | 344 pruebas con pytest, 99.8 % de cobertura | `make test` |
+
+Tablas que quedan para el benchmark:
+
+| Formato | Tabla | Escrita con |
+|---|---|---|
+| Parquet | `data/interim/yellow_tripdata.parquet` | PyArrow |
+| Delta | `data/delta/yellow_tripdata_pyarrow` | `deltalake`; febrero reescrito con Spark |
+| Iceberg | `lakehouse.lakehouse.yellow_tripdata` (`data/iceberg/warehouse/`) | PyIceberg; febrero reescrito con Spark |
+
+Las tres tienen las mismas 11,198,001 filas y las mismas 22 columnas al leerlas con Spark ([informe](docs/spark/read_write_20261023_172725.md)).
 
 ### Catálogo y tabla Iceberg
 
@@ -413,3 +447,69 @@ Resultado de la ejecución ([informe](docs/spark/update_month_20261022_200501.md
 | Spark escribió los archivos nuevos de Iceberg en GZIP, aunque los de PyIceberg eran ZSTD. La tabla no tiene `write.parquet.compression-codec` y el default de Iceberg en Java es GZIP. | Fijar la propiedad en la tabla con `ALTER TABLE ... SET TBLPROPERTIES ('write.parquet.compression-codec'='zstd')`. |
 | Delta pasó de 1 a 4 archivos en el mes: Spark escribe uno por tarea y leyó el Parquet en 4 tareas (una por row group). Iceberg escribió 1, porque reparte por partición antes de escribir. | Correr `OPTIMIZE` o reparticionar antes de escribir. |
 | `DeltaTable.get_add_actions()` de `deltalake` 1.x devuelve una tabla de arro3. | Convertirla con `pa.table(...)`. |
+
+### Versiones finales
+
+Fijadas sin rangos en `pyproject.toml` y `poetry.lock`. Las de Spark, Delta e Iceberg viven además en un solo módulo, `src/lakehouse/versions.py`, del que salen las coordenadas de los jars ([detalle](docs/spark/versiones.md)).
+
+| Componente | Versión | Dónde se fija |
+|---|---|---|
+| Python | 3.14.7 | Sistema (`requires-python = ">3.11,<4.0"`) |
+| Java (JDK) | OpenJDK 21.0.12 | Sistema; Spark 4.1 soporta 17 y 21 |
+| Spark (PySpark) | 4.1.3 | `pyproject.toml` y `versions.py` |
+| Scala | 2.13.17 (binaria 2.13) | Viene con PySpark; `versions.py` |
+| Delta (`delta-spark`) | 4.4.1 | `pyproject.toml` y `versions.py` |
+| Iceberg (`iceberg-spark-runtime-4.1_2.13`) | 1.12.0 | `versions.py` (jar de Maven) |
+| SQLite JDBC | 3.53.4.0 | `versions.py` (jar de Maven) |
+| deltalake | 1.6.6 | `pyproject.toml` |
+| PyIceberg | 0.12.0 | `pyproject.toml` |
+| PyArrow | 25.0.1 | `pyproject.toml` |
+| pytest / pytest-cov | 9.1.1 / 7.1.0 | `pyproject.toml` (grupo `dev`) |
+| Poetry | 2.4.1 | Sistema |
+| DuckDB | — | No se usa todavía |
+
+El entorno se reconstruyó desde cero (`.venv` nuevo y `poetry install`): las pruebas pasaron y `lh-spark-read-write` leyó y escribió los tres formatos sin errores.
+
+### Problemas de compatibilidad de versiones
+
+| Problema | Solución |
+|---|---|
+| No existe `iceberg-spark-runtime` para Spark 4.2, la versión que tenía el proyecto. | Bajar a PySpark 4.1.3, la versión más nueva con runtime de Iceberg (`4.1_2.13`) y de Delta (`delta-spark_4.1_2.13`). |
+| El runtime de Iceberg tiene que coincidir con Spark (major.minor) y Scala; si no, falla al cargar las clases (`ClassNotFoundException`, `NoSuchMethodError`). | La coordenada del jar se arma en `versions.py` a partir de `SPARK_VERSION` y `SCALA_BINARY`, y un test comprueba que sea `iceberg-spark-runtime-4.1_2.13`. |
+| Con rangos (`>=4.1.1,<4.2.0`) un `poetry update` podía instalar otro PySpark o delta-spark distinto de los jars. | Versiones exactas (`==`) en `pyproject.toml`. `build_spark_session()` compara lo instalado con `versions.py` y falla con un mensaje claro si no coinciden; un test revisa que `pyproject.toml` no tenga rangos. |
+| La versión de Iceberg estaba en `spark_session.py` y la de Delta en `pyproject.toml`, sin nada que las uniera. | Un solo módulo, `src/lakehouse/versions.py`, que usan la sesión y los tests. |
+| Spark tenía que usar el catálogo SQLite que creó PyIceberg, con el `JdbcCatalog` de Java. | `jdbc.schema-version=V1`, porque PyIceberg crea la columna `iceberg_type`. |
+| Iceberg en Java escribe Parquet en GZIP por defecto; PyIceberg, en ZSTD. | Propiedad `write.parquet.compression-codec=zstd` en la tabla. |
+| pytest muestra `ResourceWarning: unclosed database` de SQLite. | Vienen de las conexiones del catálogo SQL de PyIceberg; no cambian los resultados y se dejan como avisos. |
+
+### Cómo ejecutar los jobs y las pruebas
+
+```bash
+make install                       # poetry install
+
+# Jobs de Spark (la primera vez descargan los jars de Maven)
+poetry run lh-spark-read-write     # Parquet, Delta e Iceberg -> docs/spark/read_write_*.md
+poetry run lh-spark-update-month --mes 2025-02
+
+# Pruebas
+make test                          # poetry run pytest, con cobertura (mínimo 90 %)
+make test-spark                    # solo Spark y versiones, sin cobertura
+make test-report                   # todas, y guarda la salida en docs/tests/
+```
+
+Las pruebas de Spark comparten una sola `SparkSession` (fixture de alcance `session` en `tests/spark/conftest.py`, con `local[2]` y 1 GB), porque arrancar Spark tarda varios segundos. Todo se escribe en directorios temporales de pytest, con su propio catálogo y warehouse, así que no tocan `data/`. Cubren:
+
+- **Escritura**: cada formato crea la tabla con el esquema y las filas esperadas, y otro motor (`pyarrow`, `deltalake`, `pyiceberg`) la relee igual.
+- **Transformaciones**: `fill_fees` y la actualización de un mes dan el resultado esperado con una entrada conocida, y repetirlas no cambia nada.
+- **Consistencia entre formatos** (`tests/spark/test_formats.py`): la misma entrada escrita en Parquet, Delta e Iceberg devuelve las mismas filas, el mismo esquema y las mismas agregaciones.
+- **Casos borde**: entrada vacía (se conserva el esquema), nulos (se conservan en los tres formatos), esquema incorrecto (Delta e Iceberg rechazan el append; Parquet lo acepta y falla al leer) y ruta inexistente.
+
+Última corrida: 344 pruebas en verde, 99.8 % de cobertura ([salida](docs/tests/pytest_20261023_173112.txt)).
+
+### Decisiones y siguientes pasos
+
+- **Spark 4.1 y no 4.2**, mientras Iceberg no publique el runtime para 4.2. Subir implica cambiar `versions.py` y `pyproject.toml`; los tests avisan si quedan distintos.
+- **Un catálogo Iceberg compartido** (SQLite) entre PyIceberg y Spark, para que las dos herramientas vean la misma tabla sin copiarla.
+- **Parquet sin formato de tabla como línea base.** No valida el esquema al escribir (las pruebas lo muestran), pero sirve para medir cuánto cuestan las garantías de Delta e Iceberg.
+- **Versiones exactas** en lugar de rangos, para que los benchmarks se puedan repetir con el mismo entorno.
+- **Siguiente (semana 3, desde el lunes 26 de octubre):** benchmarks con Spark sobre las tres tablas (ingesta, consultas con *partition pruning*, `UPDATE`/`DELETE`/`MERGE`, *time travel* y mantenimiento), y un Dockerfile que fije también Java.

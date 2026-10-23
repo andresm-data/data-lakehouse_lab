@@ -7,22 +7,12 @@ from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 
 from lakehouse.iceberg.catalog import CATALOG_DB, CATALOG_NAME, WAREHOUSE
+from lakehouse.versions import (
+    ICEBERG_PACKAGE, SQLITE_JDBC_PACKAGE, check_installed,
+)
 
 
 # =============================================================================
-# El runtime de Iceberg se publica por versión de Spark (major.minor) y de
-# Scala. Spark 4.2 todavía no tiene runtime, por eso el proyecto usa 4.1.
-SCALA_BINARY = '2.13'
-SPARK_MINOR = '4.1'
-ICEBERG_VERSION = '1.12.0'
-SQLITE_JDBC_VERSION = '3.53.4.0'
-
-ICEBERG_PACKAGE = (
-    f'org.apache.iceberg:iceberg-spark-runtime-{SPARK_MINOR}_{SCALA_BINARY}:'
-    f'{ICEBERG_VERSION}'
-)
-SQLITE_JDBC_PACKAGE = f'org.xerial:sqlite-jdbc:{SQLITE_JDBC_VERSION}'
-
 EXTENSIONS = ','.join([
     'io.delta.sql.DeltaSparkSessionExtension',
     'org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions',
@@ -77,6 +67,11 @@ def build_spark_session(
     `configure_spark_with_delta_pip` agrega el jar de Delta que corresponde
     al paquete `delta-spark` instalado.
 
+    Antes de arrancar compara PySpark y delta-spark con `lakehouse.versions`:
+    un jar que no corresponde a la versión de Spark falla después con
+    `ClassNotFoundException` o `NoSuchMethodError`, que es más difícil de
+    rastrear.
+
     Args:
         app_name (str): Nombre de la aplicación.
         catalog_db (Path): SQLite del catálogo Iceberg; se crea si no existe.
@@ -86,7 +81,15 @@ def build_spark_session(
 
     Returns:
         SparkSession: Sesión lista para usar.
+
+    Raises:
+        RuntimeError: Si las versiones instaladas no son las fijadas.
     """
+    problems = check_installed()
+
+    if problems:
+        raise RuntimeError('Versiones incorrectas: ' + '; '.join(problems))
+
     catalog_db.parent.mkdir(parents=True, exist_ok=True)
     warehouse.mkdir(parents=True, exist_ok=True)
 
