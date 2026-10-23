@@ -6,9 +6,12 @@ import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
 
+from lakehouse.iceberg.create_table import create_table
 from lakehouse.spark.update_month import (
-    count_null_fees, delta_state, dir_size, fill_fees, measure, month_bounds,
-    parse_month, read_delta_month, summarize, update_delta,
+    count_null_fees, delta_state, dir_size, fill_fees, iceberg_state, measure,
+    month_bounds, month_condition, month_from_ordinal, parse_month,
+    read_delta_month, read_iceberg_month, summarize, update_delta,
+    update_iceberg,
 )
 
 
@@ -38,6 +41,17 @@ def delta_trips(lake, request) -> Path:
     write_deltalake(path, make_trips(), partition_by=['year', 'month'])
 
     return path
+
+
+# =============================================================================
+@pytest.fixture
+def iceberg_trips(catalog, request) -> str:
+    """Tabla Iceberg con partición `month()`, creada y cargada con PyIceberg."""
+    identifier = f'lakehouse.upd_{request.node.name}'
+    data = make_trips()
+    create_table(catalog, identifier, data.schema).append(data)
+
+    return identifier
 
 
 # =============================================================================
@@ -160,3 +174,61 @@ class TestDelta:
         assert r['version_despues'] == 2
         assert r['nulos_antes'] == 0
         assert r['filas_mes_despues'] == 3
+
+
+# =============================================================================
+class TestIceberg:
+
+    def test_month_from_ordinal(self):
+        assert month_from_ordinal(661) == (2025, 2)
+        assert month_from_ordinal(0) == (1970, 1)
+
+    def test_month_condition(self):
+        text = month_condition(2025, 12)
+
+        assert "TIMESTAMP_NTZ '2025-12-01 00:00:00'" in text
+        assert "< TIMESTAMP_NTZ '2026-01-01 00:00:00'" in text
+
+    def test_state(self, catalog, iceberg_trips):
+        s = iceberg_state(catalog, iceberg_trips, 2025, 2)
+
+        assert s['version'] is not None
+        assert s['operacion'] == 'append'
+        assert s['filas_por_mes'] == {'2025-01': 1, '2025-02': 3, '2025-03': 1}
+        assert s['archivos_mes'] == 1
+        assert s['disco']['bytes'] > s['bytes_total'] > 0
+
+    def test_state_sin_snapshots(self, catalog):
+        identifier = 'lakehouse.upd_vacia'
+        create_table(catalog, identifier, make_trips().schema)
+
+        s = iceberg_state(catalog, identifier, 2025, 2)
+
+        assert s['version'] is None and s['archivos_total'] == 0
+
+    def test_read_month(self, spark, iceberg_trips):
+        assert read_iceberg_month(spark, iceberg_trips, 2025, 2).count() == 3
+
+    def test_update(self, spark, catalog, iceberg_trips):
+        r = update_iceberg(spark, catalog, iceberg_trips, 2025, 2)
+
+        assert r['version_antes'] != r['version_despues']
+        assert r['operacion'] == 'overwrite'
+        assert r['tabla'] == f'lakehouse.{iceberg_trips}'
+        assert (r['nulos_antes'], r['nulos_despues']) == (2, 0)
+        assert r['filas_mes_antes'] == r['filas_mes_despues'] == 3
+        assert r['archivos_retirados'] == 1 and r['archivos_agregados'] >= 1
+        assert r['otros_meses_ok']
+        assert r['metadatos_nuevos'] > 0
+
+        rows = catalog.load_table(iceberg_trips).scan().to_arrow().to_pylist()
+        march = [row for row in rows if row['month'] == 3]
+        assert march[0]['Airport_fee'] is None
+
+    def test_update_idempotente(self, spark, catalog, iceberg_trips):
+        update_iceberg(spark, catalog, iceberg_trips, 2025, 2)
+        r = update_iceberg(spark, catalog, iceberg_trips, 2025, 2)
+
+        assert r['nulos_antes'] == 0
+        assert r['filas_mes_despues'] == 3
+        assert len(catalog.load_table(iceberg_trips).snapshots()) == 3
