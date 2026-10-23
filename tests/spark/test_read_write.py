@@ -5,8 +5,8 @@ import pyarrow as pa
 
 from lakehouse.spark import read_write
 from lakehouse.spark.read_write import (
-    all_ok, check, main, read_delta, read_iceberg, render, roundtrip_delta,
-    roundtrip_iceberg, sample, spark_name,
+    all_ok, check, main, read_delta, read_iceberg, read_parquet, render,
+    roundtrip_delta, roundtrip_iceberg, roundtrip_parquet, sample, spark_name,
 )
 
 
@@ -46,6 +46,13 @@ class TestCheck:
 # =============================================================================
 class TestRead:
 
+    def test_lee_parquet_de_pyarrow(self, spark, parquet_source):
+        r = read_parquet(spark, parquet_source)
+
+        assert r['filas'] == 4
+        assert r['filas_ok'] and r['esquema_ok']
+        assert ('tpep_pickup_datetime', 'timestamp_ntz') in r['columnas']
+
     def test_lee_delta_de_deltalake(self, spark, delta_source):
         r = read_delta(spark, delta_source)
 
@@ -70,6 +77,18 @@ class TestRead:
 
 # =============================================================================
 class TestRoundtrip:
+
+    def test_parquet(self, spark, lake):
+        r = roundtrip_parquet(spark, lake['root'] / 'parquet' / 'smoke')
+
+        assert r == {'filas': 3, 'spark_ok': True, 'otro_motor_ok': True}
+
+    def test_parquet_sobrescribe(self, spark, lake):
+        path = lake['root'] / 'parquet' / 'smoke2'
+        roundtrip_parquet(spark, path)
+
+        assert roundtrip_parquet(spark, path)['filas'] == 3
+        assert spark.read.parquet(str(path)).count() == 3
 
     def test_delta(self, spark, lake):
         r = roundtrip_delta(spark, lake['root'] / 'delta' / 'smoke')
@@ -104,12 +123,14 @@ def _results(ok: bool = True) -> dict:
                'diferencias': [] if ok else [('id', 'int')]}
     escritura = {'filas': 3, 'spark_ok': True, 'otro_motor_ok': True}
 
-    return {'delta_lectura': lectura, 'iceberg_lectura': lectura,
-            'delta_escritura': escritura, 'iceberg_escritura': escritura}
+    return {f'{fmt}_{step}': lectura if step == 'lectura' else escritura
+            for fmt in ('parquet', 'delta', 'iceberg')
+            for step in ('lectura', 'escritura')}
 
 
-NAMES = {'delta_lectura': 'd', 'iceberg_lectura': 'i',
-         'delta_escritura': 'dw', 'iceberg_escritura': 'iw'}
+NAMES = {'parquet_lectura': 'p', 'delta_lectura': 'd', 'iceberg_lectura': 'i',
+         'parquet_escritura': 'pw', 'delta_escritura': 'dw',
+         'iceberg_escritura': 'iw'}
 
 
 class TestReport:
@@ -123,6 +144,7 @@ class TestReport:
 
         assert '| Spark | 4.1.3 |' in text
         assert '- Resultado: OK' in text
+        assert '| Parquet | `p` |' in text and '| Parquet | `pw` |' in text
         assert 'Diferencias' not in text
 
     def test_render_con_fallas(self):
@@ -143,12 +165,14 @@ class TestMain:
 
         return main()
 
-    def test_exito(self, monkeypatch, spark, lake, delta_source,
-                   iceberg_source, capsys):
+    def test_exito(self, monkeypatch, spark, lake, parquet_source,
+                   delta_source, iceberg_source, capsys):
         out = lake['root'] / 'docs'
         argv = ['--catalogo', str(lake['db']),
                 '--warehouse', str(lake['warehouse']),
+                '--parquet', str(parquet_source),
                 '--delta', str(delta_source), '--iceberg', iceberg_source,
+                '--parquet-destino', str(lake['root'] / 'parquet' / 'main'),
                 '--delta-destino', str(lake['root'] / 'delta' / 'main'),
                 '--iceberg-destino', 'lakehouse.main', '--salida', str(out)]
 
@@ -158,13 +182,15 @@ class TestMain:
         assert '- Resultado: OK' in report
         assert 'Informe ->' in capsys.readouterr().out
 
-    def test_falla(self, monkeypatch, spark, lake, delta_source,
-                   iceberg_source, capsys):
+    def test_falla(self, monkeypatch, spark, lake, parquet_source,
+                   delta_source, iceberg_source, capsys):
         monkeypatch.setattr(read_write, 'read_delta',
                             lambda *a: _results(ok=False)['delta_lectura'])
         argv = ['--catalogo', str(lake['db']),
                 '--warehouse', str(lake['warehouse']),
+                '--parquet', str(parquet_source),
                 '--delta', str(delta_source), '--iceberg', iceberg_source,
+                '--parquet-destino', str(lake['root'] / 'parquet' / 'main2'),
                 '--delta-destino', str(lake['root'] / 'delta' / 'main2'),
                 '--iceberg-destino', 'lakehouse.main2',
                 '--salida', str(lake['root'] / 'docs2')]

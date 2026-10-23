@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from deltalake import write_deltalake
 
@@ -37,6 +38,7 @@ def lake(tmp_path_factory) -> dict[str, Path]:
         'root': root,
         'db': root / 'catalog.db',
         'warehouse': root / 'warehouse',
+        'parquet': root / 'parquet' / 'origen.parquet',
         'delta': root / 'delta' / 'origen',
     }
 
@@ -61,6 +63,16 @@ def spark(lake, catalog):
     )
     yield session
     session.stop()
+
+
+# =============================================================================
+@pytest.fixture(scope='session')
+def parquet_source(lake) -> Path:
+    """Archivo Parquet escrito con `pyarrow`, sin Spark."""
+    lake['parquet'].parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(make_table(), lake['parquet'])
+
+    return lake['parquet']
 
 
 # =============================================================================
