@@ -25,6 +25,7 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Hidden partitioning](#hidden-partitioning)
   - [Problemas y soluciones de Iceberg](#problemas-y-soluciones-de-iceberg)
   - [Spark con Delta e Iceberg](#spark-con-delta-e-iceberg)
+  - [Actualizar un mes completo con Spark](#actualizar-un-mes-completo-con-spark)
 
 ## Descripción
 
@@ -383,3 +384,32 @@ La primera ejecución descarga los jars de Maven (unos 145 MB, en `~/.ivy2.5.2/`
 | No existe `iceberg-spark-runtime` para Spark 4.2, la versión que tenía el proyecto. | Bajar PySpark a 4.1.x, la versión más nueva con runtime de Iceberg y de Delta. |
 | Spark tiene que encontrar las tablas creadas con PyIceberg. | Catálogo `jdbc` (el equivalente Java del catálogo SQL) con el mismo nombre, `lakehouse`, y `jdbc.schema-version=V1`, porque PyIceberg crea el SQLite con la columna `iceberg_type`. |
 | Los timestamps sin zona de las tablas se leen en Spark como `timestamp_ntz`, no `timestamp`. | Al comparar esquemas, traducir el de Arrow con `from_arrow_schema(..., prefer_timestamp_ntz=True)`. |
+
+### Actualizar un mes completo con Spark
+
+`lh-spark-update-month` reescribe un mes entero en las dos tablas con Spark y mide cada escritura. Por defecto actualiza febrero de 2025: pone en 0.0 los `congestion_surcharge` y `Airport_fee` nulos (806,937 viajes) y reemplaza el mes completo.
+
+```bash
+poetry run lh-spark-update-month --mes 2025-02    # informe .md y .json -> docs/spark/
+```
+
+- **Delta**: `mode('overwrite')` con `replaceWhere 'year = 2025 AND month = 2'`.
+- **Iceberg**: `writeTo(...).overwrite(condición)` sobre `tpep_pickup_datetime`, que Iceberg resuelve con la partición `month()`.
+
+Resultado de la ejecución ([informe](docs/spark/update_month_20261022_200501.md), [notas](docs/spark/update_month_notas.md)):
+
+| Medida | Delta | Iceberg |
+|---|---|---|
+| Versión / snapshot | 0 → 1 | nuevo snapshot `overwrite` |
+| Tiempo de escritura | 12.31 s | 14.89 s |
+| Archivos del mes | 1 → 4 | 2 → 1 |
+| Tamaño del mes | 70.0 → 70.0 MB | 59.3 → 54.4 MB |
+| Tabla en disco (con archivos retirados) | 220.1 → 290.7 MB | 186.1 → 240.9 MB |
+| Filas del mes y otros meses | Sin cambios | Sin cambios |
+| Contenido del mes (filas, sumas y nulos) | Igual al de Iceberg | Igual al de Delta |
+
+| Problema | Solución |
+|---|---|
+| Spark escribió los archivos nuevos de Iceberg en GZIP, aunque los de PyIceberg eran ZSTD. La tabla no tiene `write.parquet.compression-codec` y el default de Iceberg en Java es GZIP. | Fijar la propiedad en la tabla con `ALTER TABLE ... SET TBLPROPERTIES ('write.parquet.compression-codec'='zstd')`. |
+| Delta pasó de 1 a 4 archivos en el mes: Spark escribe uno por tarea y leyó el Parquet en 4 tareas (una por row group). Iceberg escribió 1, porque reparte por partición antes de escribir. | Correr `OPTIMIZE` o reparticionar antes de escribir. |
+| `DeltaTable.get_add_actions()` de `deltalake` 1.x devuelve una tabla de arro3. | Convertirla con `pa.table(...)`. |
