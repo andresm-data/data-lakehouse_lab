@@ -1,0 +1,375 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
+rootdir: /home/ramalambom/Documents/Portafolio/lakehouse-lab
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.1.0
+collected 344 items
+
+tests/benchmarks/test_compression.py ........                            [  2%]
+tests/delta/test_create_table_pyarrow.py ..........                      [  5%]
+tests/delta/test_merge_table.py ...............                          [  9%]
+tests/delta/test_optimize.py .......                                     [ 11%]
+tests/delta/test_schema_evolution.py .........                           [ 14%]
+tests/delta/test_time_travel.py ........                                 [ 16%]
+tests/delta/test_vacuum.py ..........                                    [ 19%]
+tests/iceberg/test_catalog.py ....                                       [ 20%]
+tests/iceberg/test_create_table.py ...........                           [ 23%]
+tests/iceberg/test_iceberg_ops.py .................                      [ 28%]
+tests/iceberg/test_ops_demo.py .......                                   [ 30%]
+tests/iceberg/test_snapshots.py ........                                 [ 33%]
+tests/ingest/test_convert.py ........................................... [ 45%]
+......                                                                   [ 47%]
+tests/ingest/test_io.py .......................................          [ 58%]
+tests/ingest/test_merge.py ...............................               [ 67%]
+tests/ingest/test_partition_date.py .................................... [ 78%]
+.                                                                        [ 78%]
+tests/spark/test_formats.py .............                                [ 82%]
+tests/spark/test_read_write.py ..................                        [ 87%]
+tests/spark/test_spark_session.py .....                                  [ 88%]
+tests/spark/test_update_month.py ............................            [ 97%]
+tests/test_versions.py ........../usr/lib64/python3.14/collections/__init__.py:455: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a1e40>
+  result = tuple_new(cls, iterable)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib64/python3.14/collections/__init__.py:455: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76dc60>
+  result = tuple_new(cls, iterable)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+                                        [100%]/home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib/python3.14/site-packages/_pytest/unraisableexception.py:33: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38ac5813f0>
+  gc.collect()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib/python3.14/site-packages/_pytest/unraisableexception.py:33: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f387959b2e0>
+  gc.collect()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+
+
+=============================== warnings summary ===============================
+tests/iceberg/test_catalog.py::TestGetCatalog::test_persiste_entre_aperturas
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/compiler.py:2968: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f3920094b80>
+    return separator.join(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_catalog.py::TestGetCatalog::test_persiste_entre_aperturas
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/compiler.py:2968: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c48b0>
+    return separator.join(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestCreateTable::test_particion_oculta_por_mes
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/pool/base.py:1542: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f3920097970>
+    return self.dbapi_connection.cursor(*args, **kwargs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestCreateTable::test_particion_oculta_por_mes
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/pool/base.py:1542: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c4e50>
+    return self.dbapi_connection.cursor(*args, **kwargs)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestCreateTable::test_recrea_tabla_existente
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/selectable.py:4959: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39081767a0>
+    def go(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestLoad::test_un_snapshot_por_mes
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/compiler.py:4100: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76d3f0>
+    ckbm[cb].append(bindparam)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestValidateRows::test_coincide_con_parquet_y_delta
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:964: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c7010>
+    populators = {key: list(value) for key, value in cached_populators.items()}
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestValidateRows::test_coincide_con_parquet_y_delta
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:964: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f3908177a60>
+    populators = {key: list(value) for key, value in cached_populators.items()}
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestValidateRows::test_coincide_con_parquet_y_delta
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:964: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76e2f0>
+    populators = {key: list(value) for key, value in cached_populators.items()}
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestValidateRows::test_coincide_con_parquet_y_delta
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:964: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76e7a0>
+    populators = {key: list(value) for key, value in cached_populators.items()}
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_create_table.py::TestMain::test_extremo_a_extremo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/base.py:349: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39081772e0>
+    def _de_clone(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_vuelve_al_snapshot_guardado
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/util/langhelpers.py:1612: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a23e0>
+    (k, obj.__dict__[k]) for k in names.difference(kw) if k in obj.__dict__
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f3908177880>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76e6b0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76f2e0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76c5e0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76f880>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39081765c0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a09a0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a1030>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a04f0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a0c70>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollback::test_persiste_en_el_catalogo
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/engine/result.py:763: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a32e0>
+    def _tuple_getter(self, keys: Sequence[_KeyIndexType]) -> _TupleGetterType:
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestRollbackErrors::test_snapshot_inexistente
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/util/langhelpers.py:1612: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c55d0>
+    (k, obj.__dict__[k]) for k in names.difference(kw) if k in obj.__dict__
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_iceberg_ops.py::TestListSnapshots::test_tabla_sin_snapshots
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/visitors.py:116: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39081775b0>
+    def _compiler_dispatch(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76f100>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76f790>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a27a0>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76d990>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a2e30>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c6c50>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a1b70>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a17b0>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a0f40>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a07c0>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_ops_demo.py::TestRenderAndMain::test_main_guarda_informe
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:80: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a1120>
+    def instances(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_snapshots.py::TestPartitionRows::test_filas_por_mes
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/orm/loading.py:819: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a3f10>
+    def _instance_processor(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/iceberg/test_snapshots.py::TestRenderAndMain::test_render
+  /home/ramalambom/Documents/Portafolio/lakehouse-lab/.venv/lib64/python3.14/site-packages/sqlalchemy/sql/base.py:349: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a35b0>
+    def _de_clone(
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c6d40>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a0e50>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a2d40>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f3908177d30>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a06d0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76f1f0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_formats.py::TestConsistencia::test_misma_muestra_en_los_tres_formatos
+  <frozen zipimport>:472: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a1f30>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_read_write.py::TestMain::test_exito
+  /usr/lib64/python3.14/zipfile/__init__.py:578: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f39200c5d50>
+    def _decodeExtra(self, filename_crc):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_read_write.py::TestMain::test_exito
+  /usr/lib64/python3.14/zipfile/__init__.py:578: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38dc76c310>
+    def _decodeExtra(self, filename_crc):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_read_write.py::TestMain::test_exito
+  /usr/lib64/python3.14/zipfile/__init__.py:578: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38c80a26b0>
+    def _decodeExtra(self, filename_crc):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_read_write.py::TestMain::test_exito
+  /usr/lib64/python3.14/zipfile/__init__.py:578: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f38ac580a90>
+    def _decodeExtra(self, filename_crc):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/spark/test_update_month.py::TestDelta::test_update
+  <frozen importlib._bootstrap>:74: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f387959b6a0>
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.14.7-final-0 ________________
+
+Name                                          Stmts   Miss Branch BrPart  Cover   Missing
+-----------------------------------------------------------------------------------------
+src/lakehouse/__init__.py                         0      0      0      0   100%
+src/lakehouse/benchmarks/__init__.py              0      0      0      0   100%
+src/lakehouse/benchmarks/compression.py          76      0     14      0   100%
+src/lakehouse/delta/__init__.py                   0      0      0      0   100%
+src/lakehouse/delta/create_table_pyarrow.py      42      0      4      0   100%
+src/lakehouse/delta/merge_table.py               82      0      8      0   100%
+src/lakehouse/delta/optimize.py                  52      0      2      0   100%
+src/lakehouse/delta/schema_evolution.py          71      0      4      0   100%
+src/lakehouse/delta/time_travel.py               58      0      2      0   100%
+src/lakehouse/delta/vacuum.py                    79      0     10      0   100%
+src/lakehouse/iceberg/__init__.py                 0      0      0      0   100%
+src/lakehouse/iceberg/catalog.py                 30      1      4      1    94%   71
+src/lakehouse/iceberg/create_table.py            83      0     12      0   100%
+src/lakehouse/iceberg/ops.py                     30      0      4      0   100%
+src/lakehouse/iceberg/ops_demo.py                95      1      6      0    99%   126
+src/lakehouse/iceberg/snapshots.py               66      0      6      0   100%
+src/lakehouse/ingest/__init__.py                  0      0      0      0   100%
+src/lakehouse/ingest/_cli.py                     22      0      0      0   100%
+src/lakehouse/ingest/_io.py                     149      0     80      0   100%
+src/lakehouse/ingest/_validation.py              21      0     16      0   100%
+src/lakehouse/ingest/convert.py                  19      0      4      0   100%
+src/lakehouse/ingest/merge.py                    17      0      4      0   100%
+src/lakehouse/ingest/partition_date.py           59      0     22      0   100%
+src/lakehouse/spark/__init__.py                   0      0      0      0   100%
+src/lakehouse/spark/read_write.py               139      0     14      0   100%
+src/lakehouse/spark/spark_session.py             26      0      4      0   100%
+src/lakehouse/spark/update_month.py             159      0     10      0   100%
+src/lakehouse/versions.py                        25      0      4      0   100%
+-----------------------------------------------------------------------------------------
+TOTAL                                          1400      2    234      1    99%
+Required test coverage of 90.0% reached. Total coverage: 99.82%
+================= 344 passed, 50 warnings in 173.76s (0:02:53) =================
