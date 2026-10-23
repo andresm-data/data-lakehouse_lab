@@ -1,4 +1,6 @@
 """Pruebas unitarias de lakehouse.spark.update_month."""
+import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -7,10 +9,12 @@ import pytest
 from deltalake import DeltaTable, write_deltalake
 
 from lakehouse.iceberg.create_table import create_table
+from lakehouse.spark import update_month
 from lakehouse.spark.update_month import (
-    count_null_fees, delta_state, dir_size, fill_fees, iceberg_state, measure,
-    month_bounds, month_condition, month_from_ordinal, parse_month,
-    read_delta_month, read_iceberg_month, summarize, update_delta,
+    all_ok, compare, count_null_fees, delta_state, dir_size, fill_fees,
+    iceberg_state, main, measure, month_bounds, month_condition,
+    month_from_ordinal, month_profile, parse_month, read_delta_month,
+    read_iceberg_month, render, same_profile, summarize, update_delta,
     update_iceberg,
 )
 
@@ -159,6 +163,7 @@ class TestDelta:
         assert r['filas_mes_antes'] == r['filas_mes_despues'] == 3
         assert r['archivos_retirados'] == 1 and r['archivos_agregados'] >= 1
         assert r['otros_meses_ok']
+        assert r['compresion'] == 'SNAPPY'
         assert r['disco_despues'] > r['disco_antes']
         assert r['segundos'] >= 0
 
@@ -232,3 +237,126 @@ class TestIceberg:
         assert r['nulos_antes'] == 0
         assert r['filas_mes_despues'] == 3
         assert len(catalog.load_table(iceberg_trips).snapshots()) == 3
+
+
+# =============================================================================
+class TestCompare:
+
+    def test_profile(self, spark):
+        p = month_profile(spark.createDataFrame(make_trips()))
+
+        assert p['filas'] == 5
+        assert p['nulos_congestion_surcharge'] == 2
+        assert p['nulos_Airport_fee'] == 2
+        assert p['suma_total_amount'] == pytest.approx(49.75)
+
+    def test_same_profile(self):
+        a = {'filas': 3, 'suma': 0.1 + 0.2}
+
+        assert same_profile(a, {'filas': 3, 'suma': 0.3})
+        assert not same_profile(a, {'filas': 4, 'suma': 0.3})
+        assert not same_profile(a, {'filas': 3})
+
+    def test_compare_tras_actualizar(self, spark, catalog, lake):
+        path = lake['root'] / 'delta_update' / 'compare'
+        identifier = 'lakehouse.upd_compare'
+        write_deltalake(path, make_trips(), partition_by=['year', 'month'])
+        create_table(catalog, identifier, make_trips().schema).append(make_trips())
+
+        assert compare(spark, path, identifier, 2025, 2)['iguales']
+        update_delta(spark, path, 2025, 2)
+        assert not compare(spark, path, identifier, 2025, 2)['iguales']
+
+        update_iceberg(spark, catalog, identifier, 2025, 2)
+        c = compare(spark, path, identifier, 2025, 2)
+        assert c['iguales']
+        assert c['Delta']['nulos_Airport_fee'] == 0
+
+
+# =============================================================================
+def _result(fmt: str, ok: bool = True) -> dict:
+    return {
+        'formato': fmt, 'tabla': 't', 'operacion': 'WRITE', 'segundos': 1.234,
+        'version_antes': 0, 'version_despues': 1, 'compresion': 'ZSTD',
+        'filas_mes_antes': 3, 'filas_mes_despues': 3, 'nulos_antes': 2,
+        'nulos_despues': 0 if ok else 1, 'archivos_mes_antes': 1,
+        'archivos_mes_despues': 2, 'bytes_mes_antes': 2 * 1024 ** 2,
+        'bytes_mes_despues': 3 * 1024 ** 2, 'archivos_agregados': 2,
+        'archivos_retirados': 1, 'metadatos_nuevos': 3,
+        'bytes_metadatos_nuevos': 2048, 'bytes_activos_antes': 10,
+        'bytes_activos_despues': 11, 'disco_antes': 10, 'disco_despues': 20,
+        'otros_meses_ok': True,
+    }
+
+
+COMPARISON = {'Delta': {'filas': 3, 'suma_total_amount': 1.5},
+              'Iceberg': {'filas': 3, 'suma_total_amount': 1.5},
+              'iguales': True}
+
+
+class TestReport:
+
+    def test_all_ok(self):
+        assert all_ok([_result('Delta')], COMPARISON)
+        assert not all_ok([_result('Delta', ok=False)], COMPARISON)
+        assert not all_ok([_result('Delta')], {**COMPARISON, 'iguales': False})
+
+    def test_render(self):
+        text = render('2025-02', {'Spark': '4.1.3'},
+                      [_result('Delta'), _result('Iceberg')], COMPARISON)
+
+        assert '- Resultado: OK' in text
+        assert '| Medida | Delta | Iceberg |' in text
+        assert '| Tiempo de escritura | 1.23 s | 1.23 s |' in text
+        assert '| Tamaño del mes | 2.0 MB → 3.0 MB | 2.0 MB → 3.0 MB |' in text
+        assert '| `filas` | 3 | 3 |' in text
+        assert '| `suma_total_amount` | 1.50 | 1.50 |' in text
+
+    def test_render_con_fallas(self):
+        text = render('2025-02', {}, [_result('Delta', ok=False)], COMPARISON)
+
+        assert '- Resultado: FALLA' in text
+
+
+# =============================================================================
+class TestMain:
+
+    def _run(self, monkeypatch, spark, argv):
+        monkeypatch.setattr(update_month, 'build_spark_session',
+                            lambda *a, **k: spark)
+        monkeypatch.setattr(spark, 'stop', lambda: None)
+        monkeypatch.setattr(sys, 'argv', ['lh-spark-update-month', *argv])
+
+        return main()
+
+    def _argv(self, lake, catalog, name: str) -> list[str]:
+        path = lake['root'] / 'delta_update' / name
+        identifier = f'lakehouse.upd_{name}'
+        write_deltalake(path, make_trips(), partition_by=['year', 'month'])
+        create_table(catalog, identifier, make_trips().schema).append(make_trips())
+
+        return ['--mes', '2025-02', '--delta', str(path), '--iceberg', identifier,
+                '--catalogo', str(lake['db']),
+                '--warehouse', str(lake['warehouse']),
+                '--salida', str(lake['root'] / f'docs_{name}')]
+
+    def test_exito(self, monkeypatch, spark, catalog, lake, capsys):
+        argv = self._argv(lake, catalog, 'main_ok')
+
+        assert self._run(monkeypatch, spark, argv) == 0
+
+        out = lake['root'] / 'docs_main_ok'
+        assert '- Resultado: OK' in next(out.glob('update_month_*.md')).read_text()
+        data = json.loads(next(out.glob('update_month_*.json')).read_text())
+        assert data['mes'] == '2025-02'
+        assert [r['formato'] for r in data['resultados']] == ['Delta', 'Iceberg']
+        assert data['comparacion']['iguales']
+        assert 'Informe ->' in capsys.readouterr().out
+
+    def test_falla(self, monkeypatch, spark, catalog, lake, capsys):
+        argv = self._argv(lake, catalog, 'main_falla')
+        monkeypatch.setattr(update_month, 'compare',
+                            lambda *a: {**COMPARISON, 'iguales': False})
+
+        assert self._run(monkeypatch, spark, argv) == 1
+        assert 'alguna comprobación falló' in capsys.readouterr().err
