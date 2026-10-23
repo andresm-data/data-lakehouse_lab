@@ -1,8 +1,12 @@
 """Pruebas unitarias de lakehouse.spark.spark_session."""
 from pathlib import Path
 
+import pytest
+
+from lakehouse import versions as pinned
+from lakehouse.spark import spark_session
 from lakehouse.spark.spark_session import (
-    ICEBERG_PACKAGE, ICEBERG_VERSION, iceberg_catalog_conf, versions,
+    build_spark_session, iceberg_catalog_conf, versions,
 )
 
 
@@ -40,8 +44,16 @@ class TestSession:
     def test_versiones(self, spark):
         v = versions(spark)
 
-        assert v['Spark'].startswith('4.1.')
-        assert v['Scala'].startswith('2.13.')
-        assert v['Iceberg (runtime)'] == ICEBERG_VERSION
-        assert ICEBERG_VERSION in ICEBERG_PACKAGE
-        assert v['Java'] and v['Delta (delta-spark)'] and v['Python']
+        assert v['Spark'] == pinned.SPARK_VERSION
+        assert v['Scala'].startswith(f'{pinned.SCALA_BINARY}.')
+        assert v['Delta (delta-spark)'] == pinned.DELTA_VERSION
+        assert v['Iceberg (runtime)'] == pinned.ICEBERG_VERSION
+        assert pinned.java_major(v['Java']) in pinned.SUPPORTED_JAVA
+        assert v['Python']
+
+    def test_falla_con_versiones_incorrectas(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(spark_session, 'check_installed',
+                            lambda: ['pyspark 4.2.0 instalado, se espera 4.1.3'])
+
+        with pytest.raises(RuntimeError, match='pyspark 4.2.0'):
+            build_spark_session('x', tmp_path / 'c.db', tmp_path / 'wh')
