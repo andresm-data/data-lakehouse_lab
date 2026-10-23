@@ -30,6 +30,7 @@ lh-iceberg-create = "lakehouse.iceberg.create_table:main"
 lh-iceberg-snapshots = "lakehouse.iceberg.snapshots:main"
 lh-iceberg-ops = "lakehouse.iceberg.ops_demo:main"
 lh-spark-read-write = "lakehouse.spark.read_write:main"
+lh-spark-update-month = "lakehouse.spark.update_month:main"
 
 [dependency-groups]
 dev = [
