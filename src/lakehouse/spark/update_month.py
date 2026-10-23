@@ -1,23 +1,31 @@
 """Actualiza un mes completo de taxis en Delta e Iceberg con Spark y lo mide."""
+import argparse
+import json
+import math
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 from deltalake import DeltaTable
 from pyiceberg.catalog import Catalog
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
+from lakehouse.iceberg.catalog import CATALOG_DB, WAREHOUSE, get_catalog
 from lakehouse.iceberg.create_table import IDENTIFIER, PARTITION_NAME
 from lakehouse.spark.read_write import spark_name
+from lakehouse.spark.spark_session import build_spark_session, versions
 
 
 # =============================================================================
 DELTA_TABLE = Path('data/delta/yellow_tripdata_pyarrow')
 ICEBERG_TABLE = IDENTIFIER
 MONTH = '2025-02'
+REPORT_DIR = Path('docs/spark')
 DATE_COLUMN = 'tpep_pickup_datetime'
 
 # En los viajes sin tarifa registrada (payment_type 0) estos cargos vienen
@@ -145,6 +153,12 @@ def measure(before: dict, after: dict, year: int, month: int) -> dict:
 
 
 # =============================================================================
+def parquet_codec(path: Path) -> str:
+    """Compresión de la primera columna del primer row group de un Parquet."""
+    return pq.ParquetFile(path).metadata.row_group(0).column(0).compression
+
+
+# =============================================================================
 def delta_state(path: Path, year: int, month: int) -> dict:
     """Versión, archivos activos y tamaño en disco de una tabla Delta.
 
@@ -211,6 +225,7 @@ def update_delta(spark: SparkSession, path: Path, year: int,
 
     after = delta_state(path, year, month)
     commit = DeltaTable(path).history(1)[0]
+    codec = parquet_codec(path / after['rutas'][0]) if after['rutas'] else None
 
     return {
         'formato': 'Delta',
@@ -219,6 +234,7 @@ def update_delta(spark: SparkSession, path: Path, year: int,
         'version_antes': before['version'],
         'version_despues': after['version'],
         'operacion': commit['operation'],
+        'compresion': codec,
         'nulos_antes': nulls_before,
         'nulos_despues': count_null_fees(read_delta_month(spark, path, year, month)),
         **measure(before, after, year, month),
@@ -316,6 +332,8 @@ def update_iceberg(spark: SparkSession, catalog: Catalog, identifier: str,
     seconds = time.perf_counter() - start
 
     after = iceberg_state(catalog, identifier, year, month)
+    codec = (parquet_codec(Path(urlparse(after['rutas'][0]).path))
+             if after['rutas'] else None)
 
     return {
         'formato': 'Iceberg',
@@ -324,9 +342,221 @@ def update_iceberg(spark: SparkSession, catalog: Catalog, identifier: str,
         'version_antes': before['version'],
         'version_despues': after['version'],
         'operacion': after['operacion'],
+        'compresion': codec,
         'nulos_antes': nulls_before,
         'nulos_despues': count_null_fees(
             read_iceberg_month(spark, identifier, year, month)
         ),
         **measure(before, after, year, month),
     }
+
+
+# =============================================================================
+def month_profile(df: DataFrame) -> dict:
+    """Filas, sumas de importes y nulos de un mes, para comparar formatos."""
+    nulls = [F.sum(F.col(c).isNull().cast('long')).alias(f'nulos_{c}')
+             for c in FEE_COLUMNS]
+    sums = [F.sum(c).alias(f'suma_{c}') for c in ['total_amount', *FEE_COLUMNS]]
+    row = df.agg(F.count('*').alias('filas'), *sums, *nulls).first()
+
+    return {k: (v if v is not None else 0) for k, v in row.asDict().items()}
+
+
+# =============================================================================
+def same_profile(a: dict, b: dict) -> bool:
+    """`True` si dos perfiles coinciden; las sumas, con tolerancia relativa.
+
+    Sumar millones de `double` en otro orden cambia los últimos decimales.
+    """
+    return a.keys() == b.keys() and all(
+        math.isclose(a[k], b[k], rel_tol=1e-9) for k in a
+    )
+
+
+# =============================================================================
+def compare(spark: SparkSession, path: Path, identifier: str, year: int,
+            month: int) -> dict:
+    """Perfila el mes actualizado en los dos formatos y los compara."""
+    delta = month_profile(read_delta_month(spark, path, year, month))
+    iceberg = month_profile(read_iceberg_month(spark, identifier, year, month))
+
+    return {'Delta': delta, 'Iceberg': iceberg,
+            'iguales': same_profile(delta, iceberg)}
+
+
+# =============================================================================
+def all_ok(results: list[dict], comparison: dict) -> bool:
+    """Comprobaciones: mismas filas, sin nulos, otros meses intactos e iguales."""
+    return comparison['iguales'] and all(
+        r['filas_mes_antes'] == r['filas_mes_despues']
+        and r['nulos_despues'] == 0 and r['otros_meses_ok']
+        for r in results
+    )
+
+
+# =============================================================================
+def _mb(n: int) -> str:
+    return f'{n / 1024 ** 2:,.1f} MB'
+
+
+def _mark(ok: bool) -> str:
+    return 'OK' if ok else 'FALLA'
+
+
+ROWS = [
+    ('Tabla', lambda r: f'`{r["tabla"]}`'),
+    ('Operación', lambda r: r['operacion']),
+    ('Versión / snapshot antes', lambda r: r['version_antes']),
+    ('Versión / snapshot después', lambda r: r['version_despues']),
+    ('Tiempo de escritura', lambda r: f'{r["segundos"]:.2f} s'),
+    ('Filas del mes', lambda r: f'{r["filas_mes_antes"]:,} → '
+                                f'{r["filas_mes_despues"]:,}'),
+    ('Filas con cargos nulos', lambda r: f'{r["nulos_antes"]:,} → '
+                                         f'{r["nulos_despues"]:,}'),
+    ('Archivos del mes', lambda r: f'{r["archivos_mes_antes"]} → '
+                                   f'{r["archivos_mes_despues"]}'),
+    ('Tamaño del mes', lambda r: f'{_mb(r["bytes_mes_antes"])} → '
+                                 f'{_mb(r["bytes_mes_despues"])}'),
+    ('Archivos de datos agregados / retirados',
+     lambda r: f'{r["archivos_agregados"]} / {r["archivos_retirados"]}'),
+    ('Compresión de los archivos nuevos', lambda r: r['compresion']),
+    ('Archivos de metadatos nuevos',
+     lambda r: f'{r["metadatos_nuevos"]} ({r["bytes_metadatos_nuevos"] / 1024:,.1f} KB)'),
+    ('Datos activos de la tabla', lambda r: f'{_mb(r["bytes_activos_antes"])} → '
+                                            f'{_mb(r["bytes_activos_despues"])}'),
+    ('Tabla en disco (con archivos retirados)',
+     lambda r: f'{_mb(r["disco_antes"])} → {_mb(r["disco_despues"])}'),
+    ('Otros meses sin cambios', lambda r: _mark(r['otros_meses_ok'])),
+]
+
+
+# =============================================================================
+def render(month: str, vers: dict[str, str], results: list[dict],
+           comparison: dict) -> str:
+    """Arma el informe en Markdown.
+
+    Args:
+        month (str): Mes actualizado (`AAAA-MM`).
+        vers (dict[str, str]): Versiones de `versions()`.
+        results (list[dict]): Resultado de `update_delta` y `update_iceberg`.
+        comparison (dict): Resultado de `compare`.
+
+    Returns:
+        str: Contenido del informe.
+    """
+    labels = [r['formato'] for r in results]
+    lines = [
+        '# Actualización de un mes completo con Spark: Delta vs Iceberg',
+        '',
+        f'- Fecha: {datetime.now():%Y-%m-%d %H:%M:%S}',
+        f'- Mes: {month}',
+        f'- Cambio: cargos nulos (`{"`, `".join(FEE_COLUMNS)}`) en 0.0 y '
+        'reescritura de todo el mes',
+        f'- Resultado: {_mark(all_ok(results, comparison))}',
+        '',
+        '## Versiones',
+        '',
+        '| Componente | Versión |',
+        '|---|---|',
+        *(f'| {k} | {v} |' for k, v in vers.items()),
+        '',
+        '## Resultado por formato',
+        '',
+        f'| Medida | {" | ".join(labels)} |',
+        '|---|' + '---|' * len(labels),
+        *(f'| {name} | ' + ' | '.join(str(get(r)) for r in results) + ' |'
+          for name, get in ROWS),
+        '',
+        'Los archivos activos salen del log de Delta y de los manifiestos de '
+        'Iceberg. El tamaño en disco incluye los archivos retirados, que '
+        'siguen ahí hasta un `VACUUM` (Delta) o hasta expirar los snapshots '
+        '(Iceberg).',
+        '',
+        '## Contenido del mes después de actualizar',
+        '',
+        '| Medida | Delta | Iceberg |',
+        '|---|---:|---:|',
+    ]
+
+    for key, value in comparison['Delta'].items():
+        other = comparison['Iceberg'].get(key, 0)
+        fmt = '{:,}' if isinstance(value, int) else '{:,.2f}'
+        lines.append(f'| `{key}` | {fmt.format(value)} | {fmt.format(other)} |')
+
+    lines += ['', f'- Mismo contenido en los dos formatos: '
+                  f'{_mark(comparison["iguales"])}', '']
+
+    return '\n'.join(lines)
+
+
+# =============================================================================
+def save_report(text: str, data: dict, out_dir: Path) -> Path:
+    """Guarda el informe (`.md`) y los datos (`.json`) para el dashboard."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stem = out_dir / f'update_month_{datetime.now():%Y%m%d_%H%M%S}'
+    path = stem.with_suffix('.md')
+    path.write_text(text)
+    stem.with_suffix('.json').write_text(
+        json.dumps(data, indent=2, ensure_ascii=False, default=str) + '\n'
+    )
+
+    return path
+
+
+# =============================================================================
+def main() -> int:
+    """Actualiza el mes en Delta y en Iceberg, compara y guarda el informe.
+
+    Returns:
+        int: `0` si todas las comprobaciones pasan, `1` si alguna falla.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--mes', default=MONTH, help='Mes AAAA-MM')
+    parser.add_argument('--delta', type=Path, default=DELTA_TABLE)
+    parser.add_argument('--iceberg', default=ICEBERG_TABLE)
+    parser.add_argument('--catalogo', type=Path, default=CATALOG_DB)
+    parser.add_argument('--warehouse', type=Path, default=WAREHOUSE)
+    parser.add_argument('--salida', type=Path, default=REPORT_DIR)
+    args = parser.parse_args()
+    year, month = parse_month(args.mes)
+
+    spark = build_spark_session('lh-spark-update-month', args.catalogo,
+                                args.warehouse)
+    catalog = get_catalog(args.catalogo, args.warehouse)
+
+    try:
+        vers = versions(spark)
+        results = [
+            update_delta(spark, args.delta, year, month),
+            update_iceberg(spark, catalog, args.iceberg, year, month),
+        ]
+        comparison = compare(spark, args.delta, args.iceberg, year, month)
+
+    finally:
+        spark.stop()
+
+    for r in results:
+        print(f'{r["formato"]}: {r["segundos"]:.2f} s, '
+              f'{r["version_antes"]} -> {r["version_despues"]}, '
+              f'{r["filas_mes_despues"]:,} filas, '
+              f'nulos {r["nulos_antes"]:,} -> {r["nulos_despues"]:,}')
+
+    print(f'Mismo contenido: {_mark(comparison["iguales"])}')
+
+    data = {'mes': args.mes, 'versiones': vers, 'resultados': results,
+            'comparacion': comparison}
+    path = save_report(render(args.mes, vers, results, comparison), data,
+                       args.salida)
+    print(f'Informe -> {path}')
+
+    if not all_ok(results, comparison):
+        print('Error: alguna comprobación falló', file=sys.stderr)
+
+        return 1
+
+    return 0
+
+
+# =============================================================================
+if __name__ == "__main__":
+    raise SystemExit(main())
