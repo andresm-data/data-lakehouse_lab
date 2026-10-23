@@ -2,15 +2,21 @@
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pyarrow as pa
 from deltalake import DeltaTable
+from pyiceberg.catalog import Catalog
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+
+from lakehouse.iceberg.create_table import IDENTIFIER, PARTITION_NAME
+from lakehouse.spark.read_write import spark_name
 
 
 # =============================================================================
 DELTA_TABLE = Path('data/delta/yellow_tripdata_pyarrow')
+ICEBERG_TABLE = IDENTIFIER
 MONTH = '2025-02'
 DATE_COLUMN = 'tpep_pickup_datetime'
 
@@ -215,5 +221,112 @@ def update_delta(spark: SparkSession, path: Path, year: int,
         'operacion': commit['operation'],
         'nulos_antes': nulls_before,
         'nulos_despues': count_null_fees(read_delta_month(spark, path, year, month)),
+        **measure(before, after, year, month),
+    }
+
+
+# =============================================================================
+def month_from_ordinal(ordinal: int) -> tuple[int, int]:
+    """(`year`, `month`) de una partición `month()` de Iceberg.
+
+    Iceberg guarda el mes como meses transcurridos desde 1970-01.
+    """
+    return 1970 + ordinal // 12, ordinal % 12 + 1
+
+
+# =============================================================================
+def iceberg_state(catalog: Catalog, identifier: str, year: int,
+                  month: int) -> dict:
+    """Snapshot, archivos activos y tamaño en disco de una tabla Iceberg.
+
+    Los archivos activos salen de los manifiestos del snapshot actual
+    (`inspect.files`); los del snapshot anterior siguen en disco hasta
+    expirar los snapshots.
+    """
+    table = catalog.load_table(identifier)
+    snapshot = table.current_snapshot()
+    rows = table.inspect.files().to_pylist() if snapshot else []
+    files = [
+        {'path': r['file_path'], 'bytes': r['file_size_in_bytes'],
+         'filas': r['record_count'],
+         'mes': month_from_ordinal(r['partition'][PARTITION_NAME])}
+        for r in rows if r['content'] == 0
+    ]
+    location = Path(urlparse(table.location()).path)
+
+    return {
+        'version': snapshot.snapshot_id if snapshot else None,
+        'resumen': dict(snapshot.summary.additional_properties) if snapshot else {},
+        'operacion': snapshot.summary.operation.value if snapshot else None,
+        **summarize(files, year, month),
+        'disco': dir_size(location),
+        'metadatos': dir_size(location / 'metadata'),
+    }
+
+
+# =============================================================================
+def month_condition(year: int, month: int) -> str:
+    """Filtro SQL `[inicio, fin)` sobre la fecha de recogida.
+
+    Se usan literales `TIMESTAMP_NTZ` porque la columna no tiene zona; así
+    Iceberg traduce el filtro a la partición `month()` sin conversiones.
+    """
+    start, end = month_bounds(year, month)
+
+    return (f"{DATE_COLUMN} >= TIMESTAMP_NTZ '{start:%Y-%m-%d %H:%M:%S}' "
+            f"AND {DATE_COLUMN} < TIMESTAMP_NTZ '{end:%Y-%m-%d %H:%M:%S}'")
+
+
+# =============================================================================
+def read_iceberg_month(spark: SparkSession, identifier: str, year: int,
+                       month: int) -> DataFrame:
+    """Lee un mes de la tabla Iceberg; el filtro poda por la partición."""
+    return spark.table(spark_name(identifier)).where(month_condition(year, month))
+
+
+# =============================================================================
+def update_iceberg(spark: SparkSession, catalog: Catalog, identifier: str,
+                   year: int, month: int) -> dict:
+    """Reescribe un mes de la tabla Iceberg con `overwrite(condición)`.
+
+    Lee el mes, rellena los cargos nulos y reemplaza los archivos que cumplen
+    la condición. Como la condición cubre meses completos, Iceberg la
+    resuelve con la partición `month()` y retira archivos enteros
+    (copy-on-write), sin archivos de borrado.
+
+    Args:
+        spark (SparkSession): Sesión con el catálogo Iceberg.
+        catalog (Catalog): Catálogo de PyIceberg (el mismo SQLite).
+        identifier (str): Tabla `namespace.tabla`.
+        year (int): Año del mes.
+        month (int): Mes.
+
+    Returns:
+        dict: Tiempo, snapshots, operación, nulos antes y después y las
+            medidas de `measure`.
+    """
+    before = iceberg_state(catalog, identifier, year, month)
+    df = read_iceberg_month(spark, identifier, year, month)
+    nulls_before = count_null_fees(df)
+
+    start = time.perf_counter()
+    fill_fees(df).writeTo(spark_name(identifier)).overwrite(
+        F.expr(month_condition(year, month))
+    )
+    seconds = time.perf_counter() - start
+
+    after = iceberg_state(catalog, identifier, year, month)
+
+    return {
+        'formato': 'Iceberg',
+        'tabla': spark_name(identifier),
+        'segundos': round(seconds, 2),
+        'version_antes': before['version'],
+        'version_despues': after['version'],
+        'operacion': after['operacion'],
+        'nulos_antes': nulls_before,
+        'nulos_despues': count_null_fees(
+            read_iceberg_month(spark, identifier, year, month)
+        ),
         **measure(before, after, year, month),
     }
