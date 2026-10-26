@@ -385,12 +385,20 @@ def main() -> int:
 
         return 1
 
+    # Importado aquí para que formats no dependa de charts al cargarse:
+    # charts importa funciones de este módulo.
+    from lakehouse.benchmarks.charts import plot_relative, plot_times
+
     problems = compare_results(results)
     stem = args.dir_salida / f'duckdb_formatos_{started:%Y%m%d_%H%M%S}'
     write_csv(measurements, stem.with_suffix('.csv'))
+    charts = [
+        plot_times(measurements, stem.with_name(stem.name + '_tiempos.png')),
+        plot_relative(measurements, stem.with_name(stem.name + '_relativo.png')),
+    ]
 
     text = report(measurements, locations, args.repeticiones, args.calentamiento,
-                  started, problems)
+                  started, problems, charts)
     stem.with_suffix('.md').write_text(text, encoding='utf-8')
 
     print(text)
