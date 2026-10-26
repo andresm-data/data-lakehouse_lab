@@ -218,8 +218,13 @@ class TestMain:
 
         assert main() == 0
 
-        outputs = sorted(p.suffix for p in (tmp_path / 'salida').iterdir())
-        assert outputs == ['.csv', '.md']
+        report_md = next((tmp_path / 'salida').glob('*.md'))
+        stem = report_md.stem
+        assert sorted(p.name for p in (tmp_path / 'salida').iterdir()) == sorted([
+            f'{stem}.csv', f'{stem}.md', f'{stem}_relativo.png', f'{stem}_tiempos.png'
+        ])
+        text = report_md.read_text(encoding='utf-8')
+        assert f'({stem}_tiempos.png)' in text and f'({stem}_relativo.png)' in text
         assert 'Listo ->' in capsys.readouterr().out
 
     def test_error_si_falta_la_tabla(self, locations, tmp_path, monkeypatch, capsys):
