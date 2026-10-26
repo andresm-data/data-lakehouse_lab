@@ -33,6 +33,11 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Problemas de compatibilidad de versiones](#problemas-de-compatibilidad-de-versiones)
   - [Cómo ejecutar los jobs y las pruebas](#cómo-ejecutar-los-jobs-y-las-pruebas)
   - [Decisiones y siguientes pasos](#decisiones-y-siguientes-pasos)
+- [Week 3](#week-3)
+  - [Benchmark de consultas con DuckDB](#benchmark-de-consultas-con-duckdb)
+  - [Resultados](#resultados)
+  - [Por qué Iceberg sale más lento](#por-qué-iceberg-sale-más-lento)
+  - [Problemas y soluciones del benchmark](#problemas-y-soluciones-del-benchmark)
 
 ## Descripción
 
@@ -69,6 +74,7 @@ Cada experimento se ejecuta sobre las mismas tablas escritas en ambos formatos:
 - **Python** 3.11+
 - **PySpark** 4.1 como motor de procesamiento, con `delta-spark` y el runtime de Iceberg
 - **PyArrow** para lectura y escritura de Parquet
+- **DuckDB** 2.0 para consultar Parquet, Delta e Iceberg en los benchmarks, y **matplotlib** para las gráficas
 - **Delta Lake** y **Apache Iceberg** como formatos de tabla
 - **Poetry** para la gestión de dependencias
 - **pytest** para las pruebas
@@ -466,7 +472,8 @@ Fijadas sin rangos en `pyproject.toml` y `poetry.lock`. Las de Spark, Delta e Ic
 | PyArrow | 25.0.1 | `pyproject.toml` |
 | pytest / pytest-cov | 9.1.1 / 7.1.0 | `pyproject.toml` (grupo `dev`) |
 | Poetry | 2.4.1 | Sistema |
-| DuckDB | — | No se usa todavía |
+| DuckDB | 2.0.0 | `pyproject.toml` (desde la semana 3), con las extensiones `delta` e `iceberg` |
+| matplotlib | 3.11.2 | `pyproject.toml` (desde la semana 3) |
 
 El entorno se reconstruyó desde cero (`.venv` nuevo y `poetry install`): las pruebas pasaron y `lh-spark-read-write` leyó y escribió los tres formatos sin errores.
 
@@ -513,3 +520,93 @@ Las pruebas de Spark comparten una sola `SparkSession` (fixture de alcance `sess
 - **Parquet sin formato de tabla como línea base.** No valida el esquema al escribir (las pruebas lo muestran), pero sirve para medir cuánto cuestan las garantías de Delta e Iceberg.
 - **Versiones exactas** en lugar de rangos, para que los benchmarks se puedan repetir con el mismo entorno.
 - **Siguiente (semana 3, desde el lunes 26 de octubre):** benchmarks con Spark sobre las tres tablas (ingesta, consultas con *partition pruning*, `UPDATE`/`DELETE`/`MERGE`, *time travel* y mantenimiento), y un Dockerfile que fije también Java.
+
+## Week 3
+
+Notas de la tercera semana: las mismas consultas sobre las tablas Parquet, Delta e Iceberg de la semana 2, ejecutadas con **DuckDB**.
+
+### Benchmark de consultas con DuckDB
+
+`lh-bench-formats` ejecuta seis consultas sobre los tres formatos y guarda una tabla de resultados, un CSV con todos los tiempos y dos gráficas en `docs/benchmarks/`.
+
+```bash
+poetry run lh-bench-formats -r 10 --calentamiento 2    # o: make bench-formats
+```
+
+Para que la comparación sea justa, **el texto SQL es el mismo en los tres formatos**. Cada consulta se escribe una sola vez contra la vista `trips` (`src/lakehouse/benchmarks/queries.py`); lo único que cambia es la función con la que DuckDB crea esa vista:
+
+| Formato | Vista `trips` | Extensión |
+|---|---|---|
+| Parquet | `read_parquet('data/interim/yellow_tripdata.parquet')` | — |
+| Delta | `delta_scan('data/delta/yellow_tripdata_pyarrow')` | `delta` |
+| Iceberg | `iceberg_scan('<metadata.json actual>')`, leído del catálogo con PyIceberg | `iceberg` |
+
+| Consulta | Qué mide |
+|---|---|
+| `q1_conteo` | `count(*)`: el costo fijo de abrir la tabla |
+| `q2_por_mes` | Recorrer toda la tabla y agrupar por `year`, `month` |
+| `q3_filtro_febrero` | Filtrar un mes por `tpep_pickup_datetime` (*partition pruning*) |
+| `q4_top_zonas` | Agrupar por zona de recogida, ordenar y limitar a 10 |
+| `q5_por_hora` | Una expresión (`hour(...)`) en todas las filas |
+| `q6_propina_por_pago` | Filtro por valor y una división por fila |
+
+Cómo se mide:
+
+- Cada formato tiene su propia conexión. Para cada consulta, los tres formatos se ejecutan uno tras otro, así que todos encuentran la caché del sistema operativo en un estado parecido.
+- 2 ejecuciones de calentamiento sin medir y 10 medidas; se reporta la mediana, junto con el mínimo y el máximo.
+- Se mide hasta traer todas las filas (`fetchall()`).
+- Al final se comprueba que los tres formatos devuelvan **el mismo resultado** en cada consulta (los decimales, con tolerancia relativa de 1e-9). Si no coinciden, el comando termina con código 1.
+- Las consultas no usan `congestion_surcharge` ni `Airport_fee`: en la semana 2 se reemplazaron sus nulos de febrero por 0.0 en Delta e Iceberg, pero no en el Parquet.
+
+### Resultados
+
+DuckDB 2.0.0, 12 hilos, 11,198,001 filas, 10 repeticiones ([informe completo](docs/benchmarks/duckdb_formatos_20261026_103447.md), [CSV](docs/benchmarks/duckdb_formatos_20261026_103447.csv)). Tiempos en ms (mediana); en negrita, el más rápido:
+
+| Consulta | Parquet | Delta | Iceberg |
+|---|---:|---:|---:|
+| `q1_conteo` | 18.1 | 7.2 | **2.1** |
+| `q2_por_mes` | 58.2 | **36.2** | 148.6 |
+| `q3_filtro_febrero` | 53.9 | **41.4** | 176.8 |
+| `q4_top_zonas` | 49.9 | **38.5** | 95.5 |
+| `q5_por_hora` | 99.2 | **80.3** | 218.3 |
+| `q6_propina_por_pago` | 75.2 | **57.9** | 145.0 |
+| **Total** | 354.5 | **261.4** | 786.4 |
+
+Los tres formatos devolvieron los mismos resultados en las seis consultas.
+
+![Tiempo por consulta](docs/benchmarks/duckdb_formatos_20261026_103447_tiempos.png)
+
+![Tiempo relativo a Parquet](docs/benchmarks/duckdb_formatos_20261026_103447_relativo.png)
+
+- **Delta fue el más rápido en cinco de seis consultas**, entre 0.6x y 0.8x del tiempo de Parquet.
+- **Iceberg ganó el `count(*)`** (2.1 ms): DuckDB lo resuelve con los conteos de filas de los manifiestos, sin abrir los Parquet. Con Parquet también lo saca de los metadatos, pero tiene que leer el pie del archivo con sus 173 row groups (18.1 ms). Con Delta, `EXPLAIN ANALYZE` muestra que sí recorre los 6 archivos (12 de 12 row groups), y aun así tarda menos que Parquet (7.2 ms).
+- **Iceberg fue el más lento en el resto**, entre 1.9x y 3.3x el tiempo de Parquet. La siguiente sección explica por qué.
+- **El *pruning* funciona en Delta y en Iceberg.** Con `EXPLAIN ANALYZE`, en `q3_filtro_febrero` Iceberg lee 1 archivo (solo febrero) y Delta 4 de 6. Las dos lo consiguen filtrando por la fecha original, sin mencionar `year` ni `month`.
+
+### Por qué Iceberg sale más lento
+
+No es un costo propio del formato, sino de cómo quedaron escritos sus archivos:
+
+| | Parquet | Delta | Iceberg |
+|---|---|---|---|
+| Archivos de datos | 1 | 6 | 5 |
+| Row groups | 173 | 12 | 11 |
+| Compresión | ZSTD | SNAPPY | ZSTD, y febrero en **GZIP** |
+
+- **Febrero en Iceberg es un solo archivo GZIP de un solo row group** (3.5 M de filas). Lo escribió Spark al actualizar el mes en la semana 2, con el códec por defecto de Iceberg en Java, y la tabla `lakehouse.yellow_tripdata` sigue sin la propiedad `write.parquet.compression-codec`.
+- **DuckDB reparte el trabajo entre hilos por row group**, así que ese archivo lo descomprime un solo hilo. Leído directamente, tarda 73 ms; el archivo de enero (ZSTD, 4 row groups) tarda 14 ms.
+- **SNAPPY descomprime más rápido que ZSTD**, lo que explica parte de la ventaja de Delta sobre el Parquet base.
+
+Siguiente paso para separar el formato de la escritura: fijar `write.parquet.compression-codec=zstd` y un tamaño de row group en la tabla Iceberg, compactarla (`rewrite_data_files`) y repetir el benchmark.
+
+### Problemas y soluciones del benchmark
+
+| Problema | Solución |
+|---|---|
+| Con un SQL distinto para cada formato, la comparación no sería justa. | Cada consulta se escribe una sola vez contra la vista `trips`; solo cambia la función que crea la vista. Un test comprueba que ninguna consulta nombre `read_parquet`, `delta_scan` o `iceberg_scan`. |
+| `iceberg_scan` no lee el catálogo SQL de PyIceberg. | Pasarle el `metadata.json` actual, que se obtiene con `catalog.load_table(...).metadata_location`. |
+| La ruta del `metadata.json` es una URI absoluta (`file:/home/...`) y quedaba así en el informe. | El informe la muestra relativa al repositorio. |
+| Las sumas de decimales cambian en los últimos dígitos según el orden en que se leen los archivos. | Comparar los resultados con tolerancia relativa (`math.isclose`, 1e-9). |
+| Delta e Iceberg tienen febrero corregido y el Parquet no. | Las consultas no usan las dos columnas afectadas; un test lo comprueba. |
+| DuckDB 2.0 quitó `fetchone()` de las relaciones. | Usar `fetchall()`. |
+| Las consultas tardan entre 2 y 220 ms; con un eje común, las cortas no se ven. | Un panel por consulta con su propia escala, y una segunda gráfica relativa a Parquet en escala logarítmica. |
