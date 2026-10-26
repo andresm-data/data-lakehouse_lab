@@ -11,7 +11,9 @@ dependencies = [
     "pyspark (==4.1.3)",
     "deltalake (==1.6.6)",
     "pyiceberg[pyarrow,pyiceberg-core,sql-sqlite] (==0.12.0)",
-    "delta-spark (==4.4.1)"
+    "delta-spark (==4.4.1)",
+    "duckdb (==2.0.0)",
+    "matplotlib (==3.11.2)"
 ]
 
 [project.scripts]
@@ -19,6 +21,7 @@ lh-convert = "lakehouse.ingest.convert:main"
 lh-merge = "lakehouse.ingest.merge:main"
 lh-partition-date = "lakehouse.ingest.partition_date:main"
 lh-bench-compression = "lakehouse.benchmarks.compression:main"
+lh-bench-formats = "lakehouse.benchmarks.formats:main"
 lh-delta-pyarrow = "lakehouse.delta.create_table_pyarrow:main"
 lh-delta-merge = "lakehouse.delta.merge_table:main"
 lh-delta-time-travel = "lakehouse.delta.time_travel:main"
