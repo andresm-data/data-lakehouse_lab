@@ -1,0 +1,34 @@
+# `docker compose up` construye la imagen y ejecuta el proyecto completo.
+#   docker compose run --rm tests   -> corre las pruebas dentro del contenedor
+services:
+  lakehouse:
+    build:
+      context: .
+      args:
+        # Mismo UID/GID del host para que docs/ no quede con archivos de root.
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    image: lakehouse-lab:latest
+    command: ["bash", "scripts/pipeline.sh"]
+    environment:
+      LAKEHOUSE_DATA_DIR: /app/data
+      LAKEHOUSE_DOCS_DIR: /app/docs
+    volumes:
+      # Datos en un volumen propio: el catálogo Iceberg guarda rutas absolutas,
+      # así que no se comparte con el data/ del host.
+      - lakehouse-data:/app/data
+      # Informes en el docs/ del repositorio (:z para SELinux).
+      - ./docs:/app/docs:z
+      # Jars de Spark (Delta, Iceberg, SQLite JDBC) descargados de Maven una sola vez.
+      - ivy-cache:/home/lakehouse/.ivy2.5.2
+
+  tests:
+    image: lakehouse-lab:latest
+    profiles: ["tests"]
+    command: ["pytest", "-p", "no:cacheprovider"]
+    volumes:
+      - ivy-cache:/home/lakehouse/.ivy2.5.2
+
+volumes:
+  lakehouse-data:
+  ivy-cache:

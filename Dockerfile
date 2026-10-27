@@ -44,7 +44,12 @@ RUN poetry install --no-root && rm -rf "$POETRY_CACHE_DIR"
 COPY --chown=lakehouse:lakehouse src ./src
 COPY --chown=lakehouse:lakehouse tests ./tests
 COPY --chown=lakehouse:lakehouse Makefile ./
+COPY --chown=lakehouse:lakehouse scripts ./scripts
 RUN poetry install && rm -rf "$POETRY_CACHE_DIR"
+
+# Puntos de montaje de los volúmenes, creados por el usuario del contenedor:
+# un volumen nuevo hereda el dueño del directorio de la imagen.
+RUN mkdir -p /app/data /app/docs /home/lakehouse/.ivy2.5.2
 
 ENV PATH="/app/.venv/bin:$PATH"
 
