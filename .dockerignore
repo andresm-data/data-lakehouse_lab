@@ -1,0 +1,10 @@
+# Fuera del contexto de la imagen: datos (llegan por volumen), entornos y cachés.
+.git
+.venv
+data
+docs
+notebooks
+.coverage
+.pytest_cache
+**/__pycache__
+*.py[cod]
