@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install test test-spark test-report bench-formats
+.PHONY: install test test-spark test-report bench-formats pipeline docker-up docker-test
 
 # Instala dependencias y comandos del proyecto
 install:
@@ -22,3 +22,15 @@ test-report:
 # Mismas consultas sobre Parquet, Delta e Iceberg con DuckDB -> docs/benchmarks/
 bench-formats:
 	poetry run lh-bench-formats -r 10 --calentamiento 2
+
+# Proyecto completo: descarga, ingesta, Delta, Iceberg, Spark y benchmarks
+pipeline:
+	poetry run bash scripts/pipeline.sh
+
+# Construye la imagen y ejecuta el pipeline dentro de Docker
+docker-up:
+	docker compose up --build
+
+# Pruebas dentro del contenedor
+docker-test:
+	docker compose run --build --rm tests

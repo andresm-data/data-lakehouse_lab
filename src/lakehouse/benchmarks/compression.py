@@ -12,6 +12,7 @@ import pyarrow as pa
 from lakehouse.ingest._io import AVAILABLE_COMPRESSIONS, common_schema, scan
 from lakehouse.ingest._validation import validate
 from lakehouse.ingest.convert import convert
+from lakehouse.paths import DATA_DIR, DOCS_DIR
 
 
 # =============================================================================
@@ -206,14 +207,14 @@ def main() -> int:
     parser.add_argument(
         '--dir-trabajo',
         type=Path,
-        default=Path('data/benchmarks'),
+        default=DATA_DIR / 'benchmarks',
         help='Directorio de los archivos convertidos '
         '(por defecto: data/benchmarks)'
     )
     parser.add_argument(
         '--dir-salida',
         type=Path,
-        default=Path('docs/benchmarks'),
+        default=DOCS_DIR / 'benchmarks',
         help='Directorio del reporte (por defecto: docs/benchmarks)'
     )
     parser.add_argument(

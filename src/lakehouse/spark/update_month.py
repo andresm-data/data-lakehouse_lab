@@ -17,15 +17,16 @@ from pyspark.sql import functions as F
 
 from lakehouse.iceberg.catalog import CATALOG_DB, WAREHOUSE, get_catalog
 from lakehouse.iceberg.create_table import IDENTIFIER, PARTITION_NAME
+from lakehouse.paths import DATA_DIR, DOCS_DIR
 from lakehouse.spark.read_write import spark_name
 from lakehouse.spark.spark_session import build_spark_session, versions
 
 
 # =============================================================================
-DELTA_TABLE = Path('data/delta/yellow_tripdata_pyarrow')
+DELTA_TABLE = DATA_DIR / 'delta/yellow_tripdata_pyarrow'
 ICEBERG_TABLE = IDENTIFIER
 MONTH = '2025-02'
-REPORT_DIR = Path('docs/spark')
+REPORT_DIR = DOCS_DIR / 'spark'
 DATE_COLUMN = 'tpep_pickup_datetime'
 
 # En los viajes sin tarifa registrada (payment_type 0) estos cargos vienen

@@ -13,11 +13,12 @@ import duckdb
 
 from lakehouse.benchmarks.queries import FORMATS, QUERIES, connect, source_sql
 from lakehouse.iceberg.catalog import CATALOG_DB, NAMESPACE, WAREHOUSE, get_catalog
+from lakehouse.paths import DATA_DIR, DOCS_DIR
 
 
 # =============================================================================
-PARQUET = Path('data/interim/yellow_tripdata.parquet')
-DELTA = Path('data/delta/yellow_tripdata_pyarrow')
+PARQUET = DATA_DIR / 'interim/yellow_tripdata.parquet'
+DELTA = DATA_DIR / 'delta/yellow_tripdata_pyarrow'
 ICEBERG_TABLE = f'{NAMESPACE}.yellow_tripdata'
 REL_TOL = 1e-9
 
@@ -367,7 +368,7 @@ def main() -> int:
                         '(por defecto: 5)')
     parser.add_argument('--calentamiento', type=int, default=1,
                         help='Ejecuciones sin medir antes de cada consulta (por defecto: 1)')
-    parser.add_argument('--dir-salida', type=Path, default=Path('docs/benchmarks'),
+    parser.add_argument('--dir-salida', type=Path, default=DOCS_DIR / 'benchmarks',
                         help='Directorio del informe (por defecto: docs/benchmarks)')
     args = parser.parse_args()
     started = datetime.now()

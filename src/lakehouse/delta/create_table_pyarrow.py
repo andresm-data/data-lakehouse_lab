@@ -7,10 +7,12 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from deltalake import DeltaTable, write_deltalake
 
+from lakehouse.paths import DATA_DIR
+
 
 # =============================================================================
-ORIGIN = Path('data/interim/yellow_tripdata.parquet')
-TARGET = Path('data/delta/yellow_tripdata_pyarrow')
+ORIGIN = DATA_DIR / 'interim/yellow_tripdata.parquet'
+TARGET = DATA_DIR / 'delta/yellow_tripdata_pyarrow'
 PARTITION = ['year', 'month']
 
 

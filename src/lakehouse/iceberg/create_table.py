@@ -17,11 +17,12 @@ from pyiceberg.transforms import MonthTransform
 from lakehouse.iceberg.catalog import (
     CATALOG_DB, NAMESPACE, WAREHOUSE, ensure_namespace, get_catalog,
 )
+from lakehouse.paths import DATA_DIR
 
 
 # =============================================================================
-ORIGIN = Path('data/interim/yellow_tripdata.parquet')
-DELTA = Path('data/delta/yellow_tripdata_pyarrow')
+ORIGIN = DATA_DIR / 'interim/yellow_tripdata.parquet'
+DELTA = DATA_DIR / 'delta/yellow_tripdata_pyarrow'
 IDENTIFIER = f'{NAMESPACE}.yellow_tripdata'
 DATE_COLUMN = 'tpep_pickup_datetime'
 PARTITION_NAME = 'pickup_month'
