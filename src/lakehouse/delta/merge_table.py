@@ -11,11 +11,13 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 from deltalake import DeltaTable
 
+from lakehouse.paths import DATA_DIR, DOCS_DIR
+
 
 # =============================================================================
-ORIGIN = Path('data/delta/yellow_tripdata_pyarrow')
-TARGET = Path('data/delta_demo/yellow_tripdata')
-METRICS_DIR = Path('docs/delta')
+ORIGIN = DATA_DIR / 'delta/yellow_tripdata_pyarrow'
+TARGET = DATA_DIR / 'delta_demo/yellow_tripdata'
+METRICS_DIR = DOCS_DIR / 'delta'
 KEY = ['VendorID', 'tpep_pickup_datetime', 'PULocationID', 'DOLocationID']
 TIP_FIX = 1.0
 SHIFT = timedelta(seconds=1)

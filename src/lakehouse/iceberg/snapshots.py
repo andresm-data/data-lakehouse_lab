@@ -9,10 +9,11 @@ from pyiceberg.table import Table
 
 from lakehouse.iceberg.catalog import CATALOG_DB, WAREHOUSE, get_catalog
 from lakehouse.iceberg.create_table import DATE_COLUMN, IDENTIFIER, describe_spec
+from lakehouse.paths import DOCS_DIR
 
 
 # =============================================================================
-REPORT_DIR = Path('docs/iceberg')
+REPORT_DIR = DOCS_DIR / 'iceberg'
 SUMMARY = ['added-records', 'total-records', 'added-data-files', 'source-month']
 
 

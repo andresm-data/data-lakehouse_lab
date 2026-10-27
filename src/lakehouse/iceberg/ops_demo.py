@@ -26,12 +26,13 @@ from lakehouse.iceberg.ops import (
     rollback_to,
 )
 from lakehouse.iceberg.snapshots import _location, _markdown_table
+from lakehouse.paths import DOCS_DIR
 
 
 # =============================================================================
 IDENTIFIER = f'{NAMESPACE}.yellow_tripdata_ops'
 DAY_NAME = 'pickup_day'
-REPORT_DIR = Path('docs/iceberg')
+REPORT_DIR = DOCS_DIR / 'iceberg'
 
 
 # =============================================================================

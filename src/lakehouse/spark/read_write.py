@@ -19,16 +19,17 @@ from lakehouse.iceberg.catalog import (
     CATALOG_DB, CATALOG_NAME, NAMESPACE, WAREHOUSE, get_catalog,
 )
 from lakehouse.iceberg.create_table import IDENTIFIER
+from lakehouse.paths import DATA_DIR, DOCS_DIR
 from lakehouse.spark.spark_session import build_spark_session, versions
 
 
 # =============================================================================
-PARQUET_SOURCE = Path('data/interim/yellow_tripdata.parquet')
-PARQUET_TARGET = Path('data/parquet/spark_smoke')
-DELTA_SOURCE = Path('data/delta/yellow_tripdata_pyarrow')
-DELTA_TARGET = Path('data/delta/spark_smoke')
+PARQUET_SOURCE = DATA_DIR / 'interim/yellow_tripdata.parquet'
+PARQUET_TARGET = DATA_DIR / 'parquet/spark_smoke'
+DELTA_SOURCE = DATA_DIR / 'delta/yellow_tripdata_pyarrow'
+DELTA_TARGET = DATA_DIR / 'delta/spark_smoke'
 ICEBERG_TARGET = f'{NAMESPACE}.spark_smoke'
-REPORT_DIR = Path('docs/spark')
+REPORT_DIR = DOCS_DIR / 'spark'
 
 SAMPLE_SCHEMA = StructType([
     StructField('id', LongType(), False),

@@ -4,11 +4,13 @@ from pathlib import Path
 
 from pyiceberg.catalog import Catalog, load_catalog
 
+from lakehouse.paths import DATA_DIR
+
 
 # =============================================================================
 CATALOG_NAME = 'lakehouse'
-CATALOG_DB = Path('data/iceberg/catalog.db')
-WAREHOUSE = Path('data/iceberg/warehouse')
+CATALOG_DB = DATA_DIR / 'iceberg/catalog.db'
+WAREHOUSE = DATA_DIR / 'iceberg/warehouse'
 NAMESPACE = 'lakehouse'
 
 
