@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install test test-spark test-report bench-formats pipeline docker-up docker-test
+.PHONY: install test test-spark test-report bench-formats dashboard pipeline docker-up docker-test
 
 # Instala dependencias y comandos del proyecto
 install:
@@ -22,6 +22,10 @@ test-report:
 # Mismas consultas sobre Parquet, Delta e Iceberg con DuckDB -> docs/benchmarks/
 bench-formats:
 	poetry run lh-bench-formats -r 10 --calentamiento 2
+
+# Dashboard de Streamlit en http://localhost:8501
+dashboard:
+	poetry run streamlit run src/lakehouse/dashboard/app.py
 
 # Proyecto completo: descarga, ingesta, Delta, Iceberg, Spark y benchmarks
 pipeline:
