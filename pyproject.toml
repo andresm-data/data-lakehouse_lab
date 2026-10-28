@@ -51,6 +51,8 @@ addopts = "--cov=lakehouse --cov-report=term-missing"
 
 [tool.coverage.run]
 branch = true
+# Se prueba con AppTest de Streamlit, que ejecuta el script de una forma que coverage no rastrea.
+omit = ["*/lakehouse/dashboard/app.py"]
 
 [tool.coverage.report]
 fail_under = 90
