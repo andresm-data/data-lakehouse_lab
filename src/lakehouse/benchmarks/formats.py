@@ -370,6 +370,9 @@ def main() -> int:
                         help='Ejecuciones sin medir antes de cada consulta (por defecto: 1)')
     parser.add_argument('--dir-salida', type=Path, default=DOCS_DIR / 'benchmarks',
                         help='Directorio del informe (por defecto: docs/benchmarks)')
+    parser.add_argument('--db', type=Path,
+                        help='Base DuckDB de resultados (por defecto: '
+                        'data/benchmarks/resultados.duckdb)')
     args = parser.parse_args()
     started = datetime.now()
 
@@ -386,13 +389,16 @@ def main() -> int:
 
         return 1
 
-    # Importado aquí para que formats no dependa de charts al cargarse:
-    # charts importa funciones de este módulo.
+    # Importados aquí para que formats no dependa de charts ni de results_db
+    # al cargarse: los dos importan cosas de este módulo.
     from lakehouse.benchmarks.charts import plot_relative, plot_times
+    from lakehouse.benchmarks.results_db import RESULTS_DB, save, table_sizes
 
     problems = compare_results(results)
     stem = args.dir_salida / f'duckdb_formatos_{started:%Y%m%d_%H%M%S}'
     write_csv(measurements, stem.with_suffix('.csv'))
+    db = args.db or RESULTS_DB
+    save(db, started.replace(microsecond=0), measurements, table_sizes(locations))
     charts = [
         plot_times(measurements, stem.with_name(stem.name + '_tiempos.png')),
         plot_relative(measurements, stem.with_name(stem.name + '_relativo.png')),
@@ -404,6 +410,7 @@ def main() -> int:
 
     print(text)
     print(f'Listo -> {stem}.md')
+    print(f'Resultados guardados en {db}')
 
     for p in problems:
         print(f'Diferencia: {p}', file=sys.stderr)
