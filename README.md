@@ -38,6 +38,7 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Resultados](#resultados)
   - [Por qué Iceberg sale más lento](#por-qué-iceberg-sale-más-lento)
   - [Problemas y soluciones del benchmark](#problemas-y-soluciones-del-benchmark)
+  - [Dashboard de benchmarks](#dashboard-de-benchmarks)
 
 ## Descripción
 
@@ -95,6 +96,7 @@ lakehouse-lab/
 │       ├── delta/            # Creación y operaciones sobre tablas Delta
 │       ├── iceberg/          # Creación y operaciones sobre tablas Iceberg
 │       ├── benchmarks/       # Experimentos y medición de métricas
+│       ├── dashboard/        # App de Streamlit con los resultados
 │       └── versions.py       # Versiones de Spark, Delta e Iceberg
 ├── tests/                    # Pruebas unitarias
 ├── Makefile                  # make install, test, test-spark, test-report
@@ -527,7 +529,7 @@ Notas de la tercera semana: las mismas consultas sobre las tablas Parquet, Delta
 
 ### Benchmark de consultas con DuckDB
 
-`lh-bench-formats` ejecuta seis consultas sobre los tres formatos y guarda una tabla de resultados, un CSV con todos los tiempos y dos gráficas en `docs/benchmarks/`.
+`lh-bench-formats` ejecuta seis consultas sobre los tres formatos y guarda una tabla de resultados, un CSV con todos los tiempos y dos gráficas en `docs/benchmarks/`. Además guarda cada ejecución en la base DuckDB que lee el [dashboard](#dashboard-de-benchmarks).
 
 ```bash
 poetry run lh-bench-formats -r 10 --calentamiento 2    # o: make bench-formats
@@ -610,3 +612,42 @@ Siguiente paso para separar el formato de la escritura: fijar `write.parquet.com
 | Delta e Iceberg tienen febrero corregido y el Parquet no. | Las consultas no usan las dos columnas afectadas; un test lo comprueba. |
 | DuckDB 2.0 quitó `fetchone()` de las relaciones. | Usar `fetchall()`. |
 | Las consultas tardan entre 2 y 220 ms; con un eje común, las cortas no se ven. | Un panel por consulta con su propia escala, y una segunda gráfica relativa a Parquet en escala logarítmica. |
+| `Measurement` recalcula la mediana desde los tiempos, y el CSV la guarda redondeada a 6 decimales. | Al cargar un CSV en la base, la mediana puede diferir en menos de 1 µs; los tests comparan con esa tolerancia. |
+
+### Dashboard de benchmarks
+
+Una app de Streamlit con una pestaña **Benchmarks** que lee los resultados desde DuckDB y muestra dos gráficos de Plotly: tamaño y tiempo por consulta de Parquet, Delta e Iceberg. Debajo están las tablas con los mismos datos.
+
+```bash
+poetry run lh-bench-db    # carga en DuckDB el CSV más reciente y mide las tablas
+make dashboard            # abre http://localhost:8501
+```
+
+`lh-bench-formats` ya guarda cada ejecución en la base, así que `lh-bench-db` solo hace falta para cargar un CSV generado antes (con `--csv` se elige otro). Si hay varias ejecuciones, se elige cuál ver en la pestaña.
+
+**Base de resultados** (`data/benchmarks/resultados.duckdb`, no versionada). Cada fila lleva la marca `ejecucion`, que es la misma fecha y hora del nombre de los archivos del informe:
+
+| Tabla | Una fila por | Columnas |
+|---|---|---|
+| `tiempos` | consulta y formato | `consulta`, `formato`, `filas`, `mediana_s`, `min_s`, `max_s`, `tiempos_s` (lista con todas las repeticiones) |
+| `tamanos` | formato | `formato`, `archivos`, `bytes_actuales`, `bytes_disco` |
+
+**Dos tamaños.** `bytes_actuales` suma los archivos de datos de la versión actual (el log de Delta y `inspect.files()` de Iceberg); `bytes_disco`, todo el directorio, con los metadatos y los archivos de versiones anteriores que se guardan para el *time travel*:
+
+| Formato | Archivos | Versión actual (MB) | En disco (MB) |
+|---|---:|---:|---:|
+| Parquet | 1 | 195.6 | 195.6 |
+| Delta | 6 | 220.2 | 290.7 |
+| Iceberg | 5 | 181.1 | 240.9 |
+
+- En Delta, la diferencia es casi toda el archivo de febrero que reemplazó el *overwrite* de Spark de la semana 2 (70.0 MB en `numRemovedBytes` del log).
+- En Iceberg, son los archivos de los snapshots anteriores, que todavía no se han expirado.
+
+**Comprobación.** Las 18 barras del gráfico de tiempos coinciden con la tabla del [informe](docs/benchmarks/duckdb_formatos_20261026_103447.md) (mediana redondeada a 0.1 ms) y con el CSV (mediana, mínimo y máximo), y el tamaño del Parquet coincide con los 195.6 MB de la ingesta. `tests/dashboard/test_dashboard_report.py` repite esta comprobación con el informe publicado.
+
+Detalles:
+
+- Los colores son los mismos de las gráficas PNG del benchmark; con el tema oscuro de Streamlit se usan los tonos de la misma paleta ajustados para fondo oscuro.
+- El gráfico de tiempos tiene un interruptor de escala logarítmica, porque `q1_conteo` en Iceberg (2 ms) casi no se ve junto a las de 200 ms. Las barras de error marcan el mínimo y el máximo.
+- La app abre la base en solo lectura y la cierra en cada consulta, para no bloquearla mientras un benchmark escribe.
+- Los tests de la app usan `AppTest` de Streamlit. Coverage no rastrea el script que ejecuta `AppTest`, así que `dashboard/app.py` se excluye de la medición.

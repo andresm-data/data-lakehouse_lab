@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from lakehouse.benchmarks import formats
@@ -210,6 +211,7 @@ class TestMain:
             '--warehouse', str(tmp_path / 'warehouse'),
             '-r', '1', '--calentamiento', '0',
             '--dir-salida', str(tmp_path / 'salida'),
+            '--db', str(tmp_path / 'resultados.duckdb'),
             *extra,
         ])
 
@@ -226,6 +228,21 @@ class TestMain:
         text = report_md.read_text(encoding='utf-8')
         assert f'({stem}_tiempos.png)' in text and f'({stem}_relativo.png)' in text
         assert 'Listo ->' in capsys.readouterr().out
+
+    def test_guarda_la_ejecucion_en_duckdb(self, locations, tmp_path, monkeypatch):
+        self._argv(monkeypatch, locations, tmp_path)
+
+        assert main() == 0
+
+        stem = next((tmp_path / 'salida').glob('*.csv')).stem
+        with duckdb.connect(str(tmp_path / 'resultados.duckdb'), read_only=True) as con:
+            runs = con.sql('SELECT DISTINCT ejecucion FROM tiempos').fetchall()
+            sizes = con.sql('SELECT formato FROM tamanos').fetchall()
+
+        # La ejecución es la misma marca del nombre de los archivos.
+        assert runs == [(datetime.strptime(stem.removeprefix('duckdb_formatos_'),
+                                           '%Y%m%d_%H%M%S'),)]
+        assert [s for s, in sizes] == list(FORMATS)
 
     def test_error_si_falta_la_tabla(self, locations, tmp_path, monkeypatch, capsys):
         self._argv(monkeypatch, locations, tmp_path)
