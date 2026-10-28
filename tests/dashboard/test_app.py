@@ -55,3 +55,24 @@ def test_cambia_de_ejecucion(app, saved_runs):
 
     assert not app.exception
     assert len(app.dataframe[1].value) == 3  # la ejecución vieja solo tiene q1
+
+
+# =============================================================================
+def _charts(app: AppTest) -> list[dict]:
+    """Figuras de Plotly de la pestaña, como JSON."""
+    import json
+
+    return [json.loads(c.proto.spec) for c in app.get('plotly_chart')]
+
+
+def test_muestra_los_dos_graficos(app):
+    size, time = _charts(app)
+
+    assert [t['name'] for t in size['data']] == ['Versión actual', 'En disco (con versiones anteriores)']
+    assert [t['name'] for t in time['data']] == ['parquet', 'delta', 'iceberg']
+
+
+def test_escala_logaritmica(app):
+    app.toggle[0].set_value(True).run()
+
+    assert _charts(app)[1]['layout']['yaxis']['type'] == 'log'
