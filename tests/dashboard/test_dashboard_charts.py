@@ -2,8 +2,9 @@
 import pytest
 
 from lakehouse.benchmarks.charts import COLORS
-from lakehouse.dashboard.charts import DARK, colors, size_chart, time_chart
+from lakehouse.dashboard.charts import DARK, colors, month_chart, size_chart, time_chart
 from lakehouse.dashboard.data import load_sizes, load_times
+from lakehouse.dashboard.time_travel import compare, month_summary
 
 
 # =============================================================================
@@ -63,3 +64,15 @@ class TestTimeChart:
     def test_escala(self, times):
         assert time_chart(times).layout.yaxis.type is None
         assert time_chart(times, log=True).layout.yaxis.type == 'log'
+
+
+# =============================================================================
+def test_month_chart_version_y_actual(delta_source):
+    comparison = compare(month_summary(delta_source, 0), month_summary(delta_source, 2))
+    version, current = month_chart(comparison, 'delta', 'v0', dark=True).data
+
+    assert (version.name, current.name) == ('v0', 'Actual')
+    assert list(version.x) == list(current.x) == ['2025-01', '2025-02', '2025-03']
+    assert list(version.y) == [2, 3, 0]
+    assert list(current.y) == [2, 3, 1]
+    assert current.marker.color == version.marker.pattern.fgcolor == DARK['delta']
