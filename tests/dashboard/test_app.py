@@ -13,7 +13,7 @@ from lakehouse.dashboard.time_travel import Source
 
 # =============================================================================
 APP = Path(lakehouse.dashboard.__file__).with_name('app.py')
-TABS = ['Benchmarks', 'Snapshots y time travel']
+TABS = ['Benchmarks', 'Snapshots y time travel', 'Guía de formatos']
 
 
 def _run(monkeypatch, db: Path, tables: list[Source] | None = None) -> AppTest:
@@ -179,3 +179,34 @@ class TestSnapshots:
 
         assert not app.exception
         assert 'no existía' in app.tabs[1].warning[0].value
+
+
+# =============================================================================
+class TestGuide:
+
+    @staticmethod
+    def _text(app: AppTest) -> str:
+        return '\n'.join(m.value for m in app.tabs[2].markdown)
+
+    def test_un_bloque_por_formato_y_las_tablas(self, app):
+        tab = app.tabs[2]
+
+        assert not app.exception
+        assert [s.value for s in tab.subheader] == [
+            'Parquet', 'Delta Lake', 'Apache Iceberg', 'Qué ofrece cada formato', 'Cómo elegir',
+        ]
+        assert '| Capacidad | Parquet | Delta Lake | Iceberg |' in self._text(app)
+
+    def test_cifras_de_la_ejecucion_mas_reciente(self, app, saved_runs):
+        tab = app.tabs[2]
+
+        assert f'{saved_runs[0]:%Y-%m-%d %H:%M:%S}' in tab.caption[0].value
+        assert 'Total de las 2 consultas: **47.0 ms** (0.60x Parquet)' in self._text(app)
+
+    def test_sin_base_se_muestra_sin_cifras(self, monkeypatch, tmp_path):
+        app = _run(monkeypatch, tmp_path / 'no_existe.duckdb')
+
+        assert not app.exception
+        assert 'sin cifras' in app.tabs[2].info[0].value
+        assert 'Total de las' not in self._text(app)
+        assert 'Úsalo cuando' in self._text(app)

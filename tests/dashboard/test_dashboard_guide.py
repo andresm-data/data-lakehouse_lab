@@ -5,7 +5,7 @@ import pytest
 from lakehouse.benchmarks.queries import FORMATS
 from lakehouse.dashboard.data import load_sizes, load_times
 from lakehouse.dashboard.guide import (
-    CAPABILITIES, COUNT_QUERY, DECISIONS, GUIDE, NAMES, evidence, measured,
+    CAPABILITIES, COUNT_QUERY, DECISIONS, GUIDE, NAMES, evidence, measured, to_markdown,
 )
 
 
@@ -86,3 +86,11 @@ class TestMeasured:
         ev = evidence(load_times(db, saved_runs[0]), load_sizes(db, saved_runs[0]).iloc[:0])
 
         assert len(measured(ev.iloc[0])) == 1
+
+
+# =============================================================================
+def test_to_markdown():
+    df = pd.DataFrame([('`a`', 'b | c')], columns=['X', 'Y'])
+
+    assert to_markdown(df) == '| X | Y |\n|---|---|\n| `a` | b \\| c |'
+    assert to_markdown(CAPABILITIES).count('\n') == len(CAPABILITIES) + 1
