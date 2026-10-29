@@ -169,3 +169,13 @@ def measured(row: pd.Series) -> list[str]:
         )
 
     return lines
+
+
+# =============================================================================
+def to_markdown(df: pd.DataFrame) -> str:
+    """Tabla Markdown, para que Streamlit muestre el código y las cursivas."""
+    def row(cells) -> str:
+        return '| ' + ' | '.join(str(c).replace('|', r'\|') for c in cells) + ' |'
+
+    return '\n'.join([row(df.columns), '|' + '---|' * len(df.columns),
+                      *(row(r) for r in df.itertuples(index=False))])

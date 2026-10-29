@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from lakehouse.benchmarks import results_db
-from lakehouse.dashboard import time_travel
+from lakehouse.dashboard import guide, time_travel
 from lakehouse.dashboard.charts import month_chart, size_chart, time_chart
 from lakehouse.dashboard.data import load_sizes, load_times, runs
 
@@ -179,13 +179,56 @@ def snapshots_tab() -> None:
 
 
 # =============================================================================
+def guide_tab() -> None:
+    st.header('Guía de formatos')
+    st.markdown(
+        'Cuándo conviene cada formato, según lo que el proyecto comprobó con los '
+        'mismos datos de taxis en Parquet, Delta Lake e Iceberg.'
+    )
+
+    db = results_db.RESULTS_DB
+    available = runs(db)
+    evidence = None
+
+    if available:
+        evidence = guide.evidence(load_times(db, available[0]), load_sizes(db, available[0]))
+        evidence = evidence.set_index('formato')
+        st.caption(f'Cifras de la ejecución más reciente del benchmark: '
+                   f'{available[0]:%Y-%m-%d %H:%M:%S}.')
+    else:
+        st.info('Sin resultados del benchmark, la guía se muestra sin cifras. '
+                'Ejecuta `make bench-formats` para agregarlas.')
+
+    for column, (format_, content) in zip(st.columns(3), guide.GUIDE.items()):
+        with column.container(border=True):
+            st.subheader(guide.NAMES[format_])
+            st.markdown('**Úsalo cuando**')
+            st.markdown('\n'.join(f'- {line}' for line in content['usar']))
+            st.markdown('**Evítalo cuando**')
+            st.markdown('\n'.join(f'- {line}' for line in content['evitar']))
+            st.markdown('**Lo que midió el proyecto**')
+            numbers = (guide.measured(evidence.loc[format_])
+                       if evidence is not None and format_ in evidence.index else [])
+            st.markdown('\n'.join(f'- {line}' for line in [*numbers, *content['proyecto']]))
+
+    st.subheader('Qué ofrece cada formato')
+    st.markdown(guide.to_markdown(guide.CAPABILITIES))
+
+    st.subheader('Cómo elegir')
+    st.markdown(guide.to_markdown(guide.DECISIONS))
+
+
+# =============================================================================
 st.set_page_config(page_title='Lakehouse Lab', layout='wide')
 st.title('Lakehouse Lab')
 
-benchmarks, snapshots = st.tabs(['Benchmarks', 'Snapshots y time travel'])
+benchmarks, snapshots, formats = st.tabs(['Benchmarks', 'Snapshots y time travel', 'Guía de formatos'])
 
 with benchmarks:
     benchmarks_tab()
 
 with snapshots:
     snapshots_tab()
+
+with formats:
+    guide_tab()
