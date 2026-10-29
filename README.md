@@ -39,6 +39,9 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Por qué Iceberg sale más lento](#por-qué-iceberg-sale-más-lento)
   - [Problemas y soluciones del benchmark](#problemas-y-soluciones-del-benchmark)
   - [Dashboard de benchmarks](#dashboard-de-benchmarks)
+  - [Pestaña de snapshots y time travel](#pestaña-de-snapshots-y-time-travel)
+  - [Pestaña de guía de formatos](#pestaña-de-guía-de-formatos)
+  - [Dashboard en Docker](#dashboard-en-docker)
 
 ## Descripción
 
@@ -651,3 +654,45 @@ Detalles:
 - El gráfico de tiempos tiene un interruptor de escala logarítmica, porque `q1_conteo` en Iceberg (2 ms) casi no se ve junto a las de 200 ms. Las barras de error marcan el mínimo y el máximo.
 - La app abre la base en solo lectura y la cierra en cada consulta, para no bloquearla mientras un benchmark escribe.
 - Los tests de la app usan `AppTest` de Streamlit. Coverage no rastrea el script que ejecuta `AppTest`, así que `dashboard/app.py` se excluye de la medición.
+
+### Pestaña de snapshots y time travel
+
+La segunda pestaña muestra el historial de cada tabla y consulta sus datos en una versión anterior. Hay cuatro tablas para elegir:
+
+| Tabla | Qué muestra |
+|---|---|
+| Delta · `yellow_tripdata_pyarrow` | La tabla del benchmark: la carga inicial y el *overwrite* de febrero con Spark |
+| Delta · `delta_demo` | La copia de práctica: MERGE, append, OPTIMIZE y VACUUM con retención de 0 h |
+| Iceberg · `yellow_tripdata` | La tabla del benchmark: un snapshot por mes y el *overwrite* de febrero |
+| Iceberg · `yellow_tripdata_ops` | El rollback: el append duplicado sigue como snapshot, fuera de la rama |
+
+- **Historial.** Una fila por versión (Delta) o snapshot (Iceberg), con la fecha del commit en UTC, la operación y el total de filas según los metadatos. La columna *En la línea actual* marca la versión actual y sus antecesoras: en Iceberg, un snapshot deshecho con rollback sigue existiendo, pero queda fuera.
+- **Consulta.** Se elige una versión, o una fecha y hora. Por fecha, en Delta se toma la última versión con commit hasta ese momento; en Iceberg se usa el `snapshot_log`, que registra cuándo pasó a ser actual cada snapshot, así que respeta los rollbacks.
+- **Comparación.** Solo se leen `year`, `month`, `total_amount` y `congestion_surcharge` de la versión elegida y de la actual, y se comparan por mes: viajes, suma de `total_amount` y nulos de `congestion_surcharge`. Los nulos muestran la corrección de la semana 2: en `yellow_tripdata_pyarrow`, la versión 0 tiene 2,263,749 nulos y la actual tiene 0 en febrero.
+- **VACUUM.** En `delta_demo`, las versiones 0 a 4 aparecen en el historial (el log se conserva), pero sus archivos ya no existen y la pestaña lo avisa en lugar de fallar. Es el costo del VACUUM con retención de 0 h de la semana 1.
+
+El código está en `src/lakehouse/dashboard/time_travel.py`; los tests crean tablas Delta e Iceberg pequeñas con varias versiones, un VACUUM y un rollback.
+
+### Pestaña de guía de formatos
+
+La tercera pestaña resume cuándo conviene cada formato, con lo que el proyecto comprobó en las tres semanas:
+
+- **Una tarjeta por formato**, con cuándo usarlo, cuándo evitarlo y lo que midió el proyecto. Las cifras del benchmark (total de las consultas, cuántas ganó, `count(*)` y tamaños) se calculan desde la base de resultados con la ejecución más reciente, así que se actualizan con cada `make bench-formats`. Sin base, la guía se muestra sin cifras.
+- **Qué ofrece cada formato:** transacciones, esquema, *time travel*, rollback, partición, DML, mantenimiento y catálogo.
+- **Cómo elegir:** una tabla de "si necesitas... usa..." con la evidencia de cada recomendación.
+
+El contenido está en `src/lakehouse/dashboard/guide.py`.
+
+### Dashboard en Docker
+
+El servicio `dashboard` de `docker-compose.yml` usa la misma imagen y el mismo volumen de datos que el pipeline, y publica Streamlit en el puerto 8501. Primero hay que ejecutar el pipeline en Docker al menos una vez, para que el volumen tenga la base de resultados y las tablas Delta e Iceberg (el catálogo de Iceberg guarda rutas absolutas, así que no se puede usar el `data/` del host).
+
+```bash
+make docker-up                 # una vez: pipeline completo dentro de Docker
+make docker-dashboard          # construye la imagen y levanta http://localhost:8501
+make docker-dashboard-check    # comprueba las 3 pestañas dentro del contenedor
+docker compose stop dashboard
+```
+
+`make docker-dashboard` espera a que el *healthcheck* (`/_stcore/health`) responda. `scripts/check_dashboard.py` abre la app con `AppTest` sobre los datos reales, recorre las tres pestañas y las cuatro tablas de *time travel*, y termina con código 1 si alguna lanza una excepción o no tiene datos. Fuera de Docker se ejecuta con `make dashboard-check`.
+

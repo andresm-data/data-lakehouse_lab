@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install test test-spark test-report bench-formats dashboard pipeline docker-up docker-test
+.PHONY: install test test-spark test-report bench-formats dashboard dashboard-check pipeline docker-up docker-test docker-dashboard docker-dashboard-check
 
 # Instala dependencias y comandos del proyecto
 install:
@@ -27,6 +27,10 @@ bench-formats:
 dashboard:
 	poetry run streamlit run src/lakehouse/dashboard/app.py
 
+# Comprueba que las 3 pestañas del dashboard cargan con los datos de data/
+dashboard-check:
+	poetry run python scripts/check_dashboard.py
+
 # Proyecto completo: descarga, ingesta, Delta, Iceberg, Spark y benchmarks
 pipeline:
 	poetry run bash scripts/pipeline.sh
@@ -38,3 +42,12 @@ docker-up:
 # Pruebas dentro del contenedor
 docker-test:
 	docker compose run --build --rm tests
+
+# Dashboard dentro de Docker en http://localhost:8501 (necesita el volumen de datos de docker-up)
+docker-dashboard:
+	docker compose build lakehouse
+	docker compose up --detach --wait dashboard
+
+# Comprueba las 3 pestañas dentro del contenedor del dashboard
+docker-dashboard-check:
+	docker compose exec dashboard python scripts/check_dashboard.py

@@ -1,5 +1,6 @@
 # `docker compose up` construye la imagen y ejecuta el proyecto completo.
 #   docker compose run --rm tests   -> corre las pruebas dentro del contenedor
+#   docker compose up dashboard     -> dashboard en http://localhost:8501, con los datos del volumen
 services:
   lakehouse:
     build:
@@ -21,6 +22,26 @@ services:
       - ./docs:/app/docs:z
       # Jars de Spark (Delta, Iceberg, SQLite JDBC) descargados de Maven una sola vez.
       - ivy-cache:/home/lakehouse/.ivy2.5.2
+
+  dashboard:
+    image: lakehouse-lab:latest
+    profiles: ["dashboard"]
+    command: ["streamlit", "run", "src/lakehouse/dashboard/app.py",
+              "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+    environment:
+      LAKEHOUSE_DATA_DIR: /app/data
+      LAKEHOUSE_DOCS_DIR: /app/docs
+    ports:
+      - "8501:8501"
+    volumes:
+      # Los mismos datos que dejó el pipeline: base de resultados, Delta e Iceberg.
+      - lakehouse-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
 
   tests:
     image: lakehouse-lab:latest
