@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install test test-spark test-report bench-formats dashboard pipeline docker-up docker-test
+.PHONY: install test test-spark test-report bench-formats dashboard dashboard-check pipeline docker-up docker-test docker-dashboard docker-dashboard-check
 
 # Instala dependencias y comandos del proyecto
 install:
@@ -26,6 +26,10 @@ bench-formats:
 # Dashboard de Streamlit en http://localhost:8501
 dashboard:
 	poetry run streamlit run src/lakehouse/dashboard/app.py
+
+# Comprueba que las 3 pestañas del dashboard cargan con los datos de data/
+dashboard-check:
+	poetry run python scripts/check_dashboard.py
 
 # Proyecto completo: descarga, ingesta, Delta, Iceberg, Spark y benchmarks
 pipeline:
