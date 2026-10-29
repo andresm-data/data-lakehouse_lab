@@ -42,3 +42,12 @@ docker-up:
 # Pruebas dentro del contenedor
 docker-test:
 	docker compose run --build --rm tests
+
+# Dashboard dentro de Docker en http://localhost:8501 (necesita el volumen de datos de docker-up)
+docker-dashboard:
+	docker compose build lakehouse
+	docker compose up --detach --wait dashboard
+
+# Comprueba las 3 pestañas dentro del contenedor del dashboard
+docker-dashboard-check:
+	docker compose exec dashboard python scripts/check_dashboard.py

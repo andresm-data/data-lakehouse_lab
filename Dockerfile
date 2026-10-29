@@ -45,6 +45,7 @@ COPY --chown=lakehouse:lakehouse src ./src
 COPY --chown=lakehouse:lakehouse tests ./tests
 COPY --chown=lakehouse:lakehouse Makefile ./
 COPY --chown=lakehouse:lakehouse scripts ./scripts
+COPY --chown=lakehouse:lakehouse .streamlit ./.streamlit
 RUN poetry install && rm -rf "$POETRY_CACHE_DIR"
 
 # Puntos de montaje de los volúmenes, creados por el usuario del contenedor:
@@ -52,5 +53,8 @@ RUN poetry install && rm -rf "$POETRY_CACHE_DIR"
 RUN mkdir -p /app/data /app/docs /home/lakehouse/.ivy2.5.2
 
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Dashboard de Streamlit (servicio `dashboard` de docker-compose).
+EXPOSE 8501
 
 CMD ["bash"]
