@@ -56,11 +56,12 @@ TABLES = [
            'Evolución de partición y rollback: el append duplicado quedó fuera de la rama.'),
 ]
 
+# Comando que crea cada tabla, para el aviso cuando no existe.
 COMMANDS = {
-    str(DELTA): 'lh-delta-pyarrow',
-    str(DELTA_DEMO): 'lh-delta-merge --reset',
-    ICEBERG_TABLE: 'lh-iceberg-create',
-    ICEBERG_OPS: 'lh-iceberg-ops',
+    str(DELTA): 'poetry run lh-delta-pyarrow',
+    str(DELTA_DEMO): 'poetry run lh-delta-merge --reset',
+    ICEBERG_TABLE: 'poetry run lh-iceberg-create',
+    ICEBERG_OPS: 'poetry run lh-iceberg-ops',
 }
 
 
