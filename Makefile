@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install test test-spark test-report bench-formats dashboard dashboard-check pipeline docker-up docker-test docker-dashboard docker-dashboard-check
+.PHONY: install test test-spark test-report bench-formats dashboard dashboard-check notebook pipeline docker-up docker-test docker-dashboard docker-dashboard-check
 
 # Instala dependencias y comandos del proyecto
 install:
@@ -30,6 +30,10 @@ dashboard:
 # Comprueba que las 3 pestañas del dashboard cargan con los datos de data/
 dashboard-check:
 	poetry run python scripts/check_dashboard.py
+
+# Ejecuta el notebook final con los datos de data/ y guarda las salidas
+notebook:
+	poetry run python scripts/run_notebook.py
 
 # Proyecto completo: descarga, ingesta, Delta, Iceberg, Spark y benchmarks
 pipeline:
