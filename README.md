@@ -4,6 +4,10 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
 
 ## Tabla de contenido
 
+- [Inicio rápido](#inicio-rápido)
+- [Resultados principales](#resultados-principales)
+- [Arquitectura](#arquitectura)
+- [Decisiones técnicas](#decisiones-técnicas)
 - [Descripción](#descripción)
   - [Motivación](#motivación)
   - [Datos](#datos)
@@ -42,6 +46,125 @@ Laboratorio práctico para explorar y medir las diferencias entre **Delta Lake**
   - [Pestaña de snapshots y time travel](#pestaña-de-snapshots-y-time-travel)
   - [Pestaña de guía de formatos](#pestaña-de-guía-de-formatos)
   - [Dashboard en Docker](#dashboard-en-docker)
+  - [Notebook final](#notebook-final)
+  - [Demo desde cero en Docker](#demo-desde-cero-en-docker)
+
+## Inicio rápido
+
+Solo hace falta **Docker con Compose**; Python, Java, Spark y los datos se instalan o descargan dentro de los contenedores.
+
+```bash
+git clone https://github.com/andresm-data/data-lakehouse_lab.git
+cd data-lakehouse_lab
+make demo
+```
+
+`make demo` ([`scripts/demo.sh`](scripts/demo.sh)) hace cinco pasos, todos en Docker:
+
+1. Construye la imagen: Python 3.14, Poetry 2.4.1 y Java 21.
+2. Ejecuta el pipeline completo ([`scripts/pipeline.sh`](scripts/pipeline.sh)): descarga los datos de NYC TLC, crea las tablas Parquet, Delta e Iceberg, ejecuta los jobs de Spark y los benchmarks. Los informes quedan en `docs/`.
+3. Ejecuta las pruebas.
+4. Ejecuta el [notebook final](notebooks/comparacion_formatos.ipynb) con esos datos.
+5. Levanta el dashboard en <http://localhost:8501> y comprueba sus tres pestañas.
+
+`make demo-clean` borra los contenedores, los volúmenes y la imagen, para repetirla desde cero. Los tiempos y el resultado de la prueba están en [Demo desde cero en Docker](#demo-desde-cero-en-docker).
+
+Sin Docker, con Poetry y un JDK 17 o 21: `make install`, `make pipeline`, `make test`, `make notebook` y `make dashboard`.
+
+## Resultados principales
+
+Las mismas seis consultas con DuckDB sobre 11.2 M de viajes (mediana de 10 repeticiones; detalle en el [notebook](notebooks/comparacion_formatos.ipynb) y en [Resultados](#resultados)):
+
+| | Parquet | Delta | Iceberg |
+|---|---:|---:|---:|
+| Total de las 6 consultas | 354.5 ms | **261.4 ms** | 786.4 ms |
+| Consultas en las que fue el más rápido | 0 | **5** | 1 (`count(*)`) |
+| Tamaño de la versión actual | 195.6 MB | 220.2 MB | 181.1 MB |
+| Tamaño en disco, con el historial | 195.6 MB | 290.7 MB | 240.9 MB |
+| *Time travel*, MERGE y validación de esquema | No | Sí | Sí |
+
+- **Delta fue el más rápido** con DuckDB, incluso frente al Parquet sin formato de tabla: sus archivos tienen más *row groups* (más paralelismo) y usan SNAPPY.
+- **Iceberg fue el más lento por cómo quedaron escritos sus archivos, no por el formato:** febrero es un solo archivo GZIP de un solo row group, que DuckDB lee con un solo hilo. Sí ganó el `count(*)`, que responde con los metadatos sin abrir los datos.
+- **El historial cuesta espacio:** Delta e Iceberg guardan los archivos reemplazados para el *time travel* hasta un `VACUUM` o hasta expirar los snapshots.
+
+## Arquitectura
+
+Cada caja de proceso es un comando `lh-*`; `scripts/pipeline.sh` los ejecuta en este orden. El diagrama de los servicios de Docker y la descripción de cada capa están en [docs/arquitectura.md](docs/arquitectura.md).
+
+```mermaid
+flowchart LR
+    tlc[("NYC TLC<br/>CloudFront")]
+
+    subgraph ingesta["1 · Ingesta (PyArrow)"]
+        landing["data/landing/<br/>Parquet por mes + zonas CSV"]
+        raw["data/raw/<br/>year=.../month=..."]
+        interim["data/interim/<br/>yellow_tripdata.parquet"]
+    end
+
+    subgraph tablas["2 · Formatos de tabla"]
+        delta["Delta<br/>data/delta/yellow_tripdata_pyarrow<br/>data/delta_demo/"]
+        iceberg["Iceberg<br/>data/iceberg/warehouse/"]
+        catalogo[("Catálogo SQLite<br/>data/iceberg/catalog.db")]
+    end
+
+    subgraph motores["3 · Procesamiento"]
+        spark["Spark 4.1<br/>delta-spark + iceberg-runtime<br/>lh-spark-*"]
+        duckdb["DuckDB 2.0<br/>lh-bench-formats"]
+    end
+
+    subgraph salidas["4 · Resultados"]
+        resultados[("data/benchmarks/<br/>resultados.duckdb")]
+        informes["docs/<br/>informes .md, .csv, .png, .json"]
+        dashboard["Dashboard Streamlit<br/>:8501"]
+        notebook["notebooks/<br/>comparacion_formatos.ipynb"]
+    end
+
+    tlc -- "curl" --> landing
+    landing -- "lh-partition-date" --> raw
+    raw -- "lh-merge" --> interim
+    interim -- "lh-delta-* (deltalake)" --> delta
+    interim -- "lh-iceberg-* (PyIceberg)" --> iceberg
+    iceberg <--> catalogo
+
+    delta <-->|"lectura y update de un mes"| spark
+    iceberg <-->|"lectura y update de un mes"| spark
+    catalogo -. "mismo catálogo" .-> spark
+
+    interim -- "read_parquet" --> duckdb
+    delta -- "delta_scan" --> duckdb
+    iceberg -- "iceberg_scan(metadata.json)" --> duckdb
+
+    duckdb --> resultados
+    duckdb --> informes
+    spark --> informes
+
+    resultados --> dashboard
+    delta -- "versiones" --> dashboard
+    iceberg -- "snapshots" --> dashboard
+    resultados --> notebook
+    informes --> notebook
+```
+
+## Decisiones técnicas
+
+| Decisión | Alternativa descartada | Por qué |
+|---|---|---|
+| Datos reales de NYC TLC, enero a marzo de 2025 (11.2 M de filas) | Datos sintéticos o un dataset más grande | Públicos y reproducibles, con nulos y claves repetidas reales, y caben en un portátil de 7 GB de RAM. |
+| Parquet sin formato de tabla como línea base | Comparar solo Delta e Iceberg | Mide cuánto cuestan las garantías de los formatos de tabla; las pruebas muestran que Parquet no valida el esquema al escribir. |
+| Parquet con ZSTD en la ingesta | SNAPPY, GZIP o CSV | En el [benchmark de compresión](docs/benchmarks/compresion_consolidado_20261007_165331.md), el mejor equilibrio entre tamaño y tiempo; frente a CSV, Parquet lee entre 5.5 y 10 veces más rápido. |
+| Delta con `deltalake` (delta-rs) e Iceberg con PyIceberg | Spark para todo | Las operaciones de cada formato se prueban en Python, sin JVM; Spark se usa solo para comprobar que los dos formatos se leen y escriben igual desde el motor más común. |
+| Un catálogo Iceberg SQL sobre SQLite, compartido por PyIceberg y Spark | Catálogo Hadoop, REST o Hive | No necesita un servicio aparte y las dos herramientas ven la misma tabla sin copiarla. |
+| Particiones `year`/`month` en Delta y *hidden partitioning* `month(tpep_pickup_datetime)` en Iceberg | La misma partición explícita en los dos | Así se compara lo que ofrece cada formato: en las dos tablas el *pruning* funciona filtrando por la fecha original. |
+| Spark 4.1 con Java 21 | Spark 4.2 | Iceberg aún no publica el runtime para Spark 4.2 ([versiones](docs/spark/versiones.md)). |
+| Versiones exactas en `pyproject.toml` y en `versions.py` | Rangos de versiones | Los benchmarks se pueden repetir con el mismo entorno; las pruebas avisan si los jars de Spark y los paquetes de Python no coinciden. |
+| DuckDB para el benchmark de consultas, con el mismo SQL en los tres formatos | Un motor distinto por formato, o Spark | Un solo motor lee los tres formatos, así que la diferencia la pone el formato. Spark añade el arranque de la JVM y más variación. |
+| Mediana de 10 repeticiones tras 2 de calentamiento, y resultados comparados entre formatos | Una sola ejecución | La mediana resiste a valores atípicos, y comparar los resultados garantiza que los tres formatos respondieron lo mismo. |
+| No corregir el GZIP de febrero en Iceberg antes del benchmark | Reescribir la tabla para que salga mejor | El benchmark mide las tablas tal como quedaron; el problema y el siguiente paso quedan documentados en [Por qué Iceberg sale más lento](#por-qué-iceberg-sale-más-lento). |
+| `VACUUM` con retención de 0 h solo en la copia `delta_demo` | Ejecutarlo sobre la tabla del benchmark | Muestra el costo de VACUUM (se pierde el *time travel*) sin romper los datos que comparan los formatos. |
+| Resultados en una base DuckDB y dashboard en Streamlit | Solo informes en Markdown | Cada ejecución queda guardada y se puede comparar; la app abre la base en solo lectura para no bloquear un benchmark en curso. |
+| Docker con los datos en un volumen y los informes en el `docs/` del host | Montar el `data/` del host | El catálogo de Iceberg guarda rutas absolutas, que cambian dentro del contenedor; el usuario de la imagen tiene el mismo UID que el del host para que `docs/` no quede con archivos de root. |
+| Notebook ejecutado con `nbclient` y versionado con sus salidas | Jupyter como servicio | Se lee en GitHub sin ejecutarlo y se regenera con un comando (`make notebook`), también dentro de Docker. |
+| Diagrama de arquitectura en Mermaid | Una imagen exportada | GitHub lo dibuja desde el texto, así que se edita y se revisa en el mismo commit que el código. |
 
 ## Descripción
 
@@ -80,8 +203,10 @@ Cada experimento se ejecuta sobre las mismas tablas escritas en ambos formatos:
 - **PyArrow** para lectura y escritura de Parquet
 - **DuckDB** 2.0 para consultar Parquet, Delta e Iceberg en los benchmarks, y **matplotlib** para las gráficas
 - **Delta Lake** y **Apache Iceberg** como formatos de tabla
+- **Streamlit** y **Plotly** para el dashboard, y **Jupyter** (`nbclient`) para el notebook final
 - **Poetry** para la gestión de dependencias
 - **pytest** para las pruebas
+- **Docker** y Docker Compose para ejecutar todo con Java 21 fijado
 
 ## Estructura
 
@@ -90,8 +215,10 @@ lakehouse-lab/
 ├── data/                     # No versionado
 │   ├── landing/              # Archivos originales de NYC TLC, sin modificar
 │   └── raw/                  # Dataset unificado y particionado por fecha
-├── docs/                     # Documentación y resultados de los benchmarks
-├── notebooks/                # Exploración y análisis interactivo
+├── docs/                     # Informes con fecha de cada comando y arquitectura.md
+├── notebooks/
+│   └── comparacion_formatos.ipynb   # Comparación final con las mediciones
+├── scripts/                  # pipeline.sh, demo.sh, check_dashboard.py, run_notebook.py
 ├── src/
 │   └── lakehouse/
 │       ├── ingest/           # Carga y limpieza de los datos crudos
@@ -102,7 +229,9 @@ lakehouse-lab/
 │       ├── dashboard/        # App de Streamlit con los resultados
 │       └── versions.py       # Versiones de Spark, Delta e Iceberg
 ├── tests/                    # Pruebas unitarias
-├── Makefile                  # make install, test, test-spark, test-report
+├── Dockerfile                # Python 3.14, Poetry y Java 21
+├── docker-compose.yml        # Servicios lakehouse (pipeline), tests y dashboard
+├── Makefile                  # make demo, pipeline, test, notebook, dashboard...
 ├── pyproject.toml            # Configuración del proyecto y dependencias
 ├── poetry.lock
 └── README.md
@@ -696,3 +825,27 @@ docker compose stop dashboard
 
 `make docker-dashboard` espera a que el *healthcheck* (`/_stcore/health`) responda. `scripts/check_dashboard.py` abre la app con `AppTest` sobre los datos reales, recorre las tres pestañas y las cuatro tablas de *time travel*, y termina con código 1 si alguna lanza una excepción o no tiene datos. Fuera de Docker se ejecuta con `make dashboard-check`.
 
+
+### Notebook final
+
+[`notebooks/comparacion_formatos.ipynb`](notebooks/comparacion_formatos.ipynb) reúne la comparación de Parquet, Delta e Iceberg con las mediciones del proyecto. Se versiona con sus salidas, así que se puede leer en GitHub sin ejecutarlo.
+
+| Sección | Qué muestra | De dónde salen los datos |
+|---|---|---|
+| Consultas con DuckDB | Tiempos por consulta, total, relativo a Parquet y dispersión, con una gráfica en escala logarítmica | Ejecución más reciente en `data/benchmarks/resultados.duckdb` |
+| Medición en vivo | Las seis consultas otra vez (5 repeticiones), si el más rápido coincide y si los tres formatos devuelven lo mismo | `formats.run` y `formats.compare_results`, las funciones de `lh-bench-formats` |
+| Tamaño en disco | Versión actual frente a todo el directorio, con el historial | Base de resultados |
+| Cómo están escritos los archivos | Archivos, row groups, filas por row group y códec de cada tabla | Pie de cada Parquet, a partir del log de Delta y de `inspect.files()` de Iceberg |
+| Escritura con Spark | La actualización de febrero en Delta e Iceberg | `docs/spark/update_month_*.json` |
+| Conclusiones | Resumen con las cifras de la ejecución y cuándo conviene cada formato | — |
+
+```bash
+make notebook    # o: poetry run python scripts/run_notebook.py
+```
+
+`scripts/run_notebook.py` ejecuta el notebook con `nbclient` desde la raíz del repositorio y guarda las salidas en el mismo archivo; si una celda falla, termina con código 1 y no lo sobrescribe. En la medición en vivo, el más rápido coincidió con el benchmark en las seis consultas y en el total, y los tres formatos devolvieron los mismos resultados.
+
+| Problema | Solución |
+|---|---|
+| Las gráficas de matplotlib no aparecían en el notebook. | `lakehouse.benchmarks.charts` fija el backend `Agg` al importarse, para guardar los PNG sin ventana. El notebook activa `%matplotlib inline` después de importar el proyecto. |
+| Las rutas del proyecto son relativas a la raíz y el notebook está en `notebooks/`. | El script lo ejecuta con la raíz como directorio de trabajo, y la primera celda sube un nivel si se abre desde `notebooks/`. |
