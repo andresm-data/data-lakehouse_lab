@@ -825,3 +825,27 @@ docker compose stop dashboard
 
 `make docker-dashboard` espera a que el *healthcheck* (`/_stcore/health`) responda. `scripts/check_dashboard.py` abre la app con `AppTest` sobre los datos reales, recorre las tres pestañas y las cuatro tablas de *time travel*, y termina con código 1 si alguna lanza una excepción o no tiene datos. Fuera de Docker se ejecuta con `make dashboard-check`.
 
+
+### Notebook final
+
+[`notebooks/comparacion_formatos.ipynb`](notebooks/comparacion_formatos.ipynb) reúne la comparación de Parquet, Delta e Iceberg con las mediciones del proyecto. Se versiona con sus salidas, así que se puede leer en GitHub sin ejecutarlo.
+
+| Sección | Qué muestra | De dónde salen los datos |
+|---|---|---|
+| Consultas con DuckDB | Tiempos por consulta, total, relativo a Parquet y dispersión, con una gráfica en escala logarítmica | Ejecución más reciente en `data/benchmarks/resultados.duckdb` |
+| Medición en vivo | Las seis consultas otra vez (5 repeticiones), si el más rápido coincide y si los tres formatos devuelven lo mismo | `formats.run` y `formats.compare_results`, las funciones de `lh-bench-formats` |
+| Tamaño en disco | Versión actual frente a todo el directorio, con el historial | Base de resultados |
+| Cómo están escritos los archivos | Archivos, row groups, filas por row group y códec de cada tabla | Pie de cada Parquet, a partir del log de Delta y de `inspect.files()` de Iceberg |
+| Escritura con Spark | La actualización de febrero en Delta e Iceberg | `docs/spark/update_month_*.json` |
+| Conclusiones | Resumen con las cifras de la ejecución y cuándo conviene cada formato | — |
+
+```bash
+make notebook    # o: poetry run python scripts/run_notebook.py
+```
+
+`scripts/run_notebook.py` ejecuta el notebook con `nbclient` desde la raíz del repositorio y guarda las salidas en el mismo archivo; si una celda falla, termina con código 1 y no lo sobrescribe. En la medición en vivo, el más rápido coincidió con el benchmark en las seis consultas y en el total, y los tres formatos devolvieron los mismos resultados.
+
+| Problema | Solución |
+|---|---|
+| Las gráficas de matplotlib no aparecían en el notebook. | `lakehouse.benchmarks.charts` fija el backend `Agg` al importarse, para guardar los PNG sin ventana. El notebook activa `%matplotlib inline` después de importar el proyecto. |
+| Las rutas del proyecto son relativas a la raíz y el notebook está en `notebooks/`. | El script lo ejecuta con la raíz como directorio de trabajo, y la primera celda sube un nivel si se abre desde `notebooks/`. |
