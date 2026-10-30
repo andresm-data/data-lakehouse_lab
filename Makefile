@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: install test test-spark test-report bench-formats dashboard dashboard-check notebook pipeline docker-up docker-test docker-dashboard docker-dashboard-check
+.PHONY: install test test-spark test-report bench-formats dashboard dashboard-check notebook pipeline demo demo-clean docker-up docker-test docker-dashboard docker-dashboard-check
 
 # Instala dependencias y comandos del proyecto
 install:
@@ -38,6 +38,14 @@ notebook:
 # Proyecto completo: descarga, ingesta, Delta, Iceberg, Spark y benchmarks
 pipeline:
 	poetry run bash scripts/pipeline.sh
+
+# Demo completa en Docker: imagen, pipeline, pruebas, notebook y dashboard en :8501
+demo:
+	bash scripts/demo.sh
+
+# Borra los contenedores, los volúmenes (datos y jars) y la imagen, para repetir la demo desde cero
+demo-clean:
+	docker compose --profile dashboard --profile tests down --volumes --rmi all --remove-orphans
 
 # Construye la imagen y ejecuta el pipeline dentro de Docker
 docker-up:
