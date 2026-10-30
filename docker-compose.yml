@@ -1,4 +1,5 @@
 # `docker compose up` construye la imagen y ejecuta el proyecto completo.
+#   make demo                       -> todo desde cero: pipeline, pruebas, notebook y dashboard
 #   docker compose run --rm tests   -> corre las pruebas dentro del contenedor
 #   docker compose up dashboard     -> dashboard en http://localhost:8501, con los datos del volumen
 services:
@@ -20,6 +21,8 @@ services:
       - lakehouse-data:/app/data
       # Informes en el docs/ del repositorio (:z para SELinux).
       - ./docs:/app/docs:z
+      # El notebook final, para ejecutarlo con los datos del volumen (make demo).
+      - ./notebooks:/app/notebooks:z
       # Jars de Spark (Delta, Iceberg, SQLite JDBC) descargados de Maven una sola vez.
       - ivy-cache:/home/lakehouse/.ivy2.5.2
 
